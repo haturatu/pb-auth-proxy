@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Account</title>
+    <link rel="stylesheet" href="{{.Paths.Assets}}/css/style.css">
+    <link rel="stylesheet" href="{{.Paths.Assets}}/css/account.css">
+</head>
+<body>
+    <div class="container content-container">
+        <h2>My Account</h2>
+        <p>Welcome, {{.User.Username}}!</p>
+        <ul>
+            <li><a href="{{.Paths.AccountPassword}}">Change Password</a></li>
+        </ul>
+        <div class="logout-link">
+            <a href="{{.Paths.Logout}}">Logout</a>
+        </div>
+    </div>
+    <script src="{{.Paths.Assets}}/js/auth.js"></script>
+</body>
+</html>

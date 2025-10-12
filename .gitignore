@@ -1,0 +1,9 @@
+# Binaries
+auth-proxy-server
+admin-cli
+
+# DB file
+auth.db
+
+# .env file
+.env

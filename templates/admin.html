@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="{{.Paths.Assets}}/css/style.css">
+    <link rel="stylesheet" href="{{.Paths.Assets}}/css/admin.css">
+</head>
+<body class="admin-page">
+    <div class="container admin-container">
+        <h1>User Management</h1>
+        <a href="{{.Paths.Account}}">My Account</a> | <a href="{{.Paths.Logout}}">Logout</a>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Is Active</th>
+                        <th>Failed Logins</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="user-list">
+                    {{range .Users}}
+                    <tr>
+                        <td>{{.ID}}</td>
+                        <td>{{.Username}}</td>
+                        <td>
+                            <select id="role-{{.ID}}">
+                                <option value="user" {{if eq .Role "user"}}selected{{end}}>user</option>
+                                <option value="admin" {{if eq .Role "admin"}}selected{{end}}>admin</option>
+                            </select>
+                        </td>
+                        <td>{{if .IsActive}}Yes{{else}}No{{end}}</td>
+                        <td>{{.FailedLogins}}</td>
+                        <td>{{if .LastLoginAt.Valid}}{{.LastLoginAt.Time.Format "2006-01-02 15:04"}}{{else}}Never{{end}}</td>
+                        <td>
+                            <button onclick="updateRole({{.ID}})">Save Role</button>
+                            <button onclick="toggleActive({{.ID}}, {{not .IsActive}})">{{if .IsActive}}Deactivate{{else}}Activate{{end}}</button>
+                            <button class="delete" onclick="deleteUser({{.ID}})">Delete</button>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_PATH = "{{.Paths.AdminUsersAPI}}";
+        const LOGIN_PATH = "{{.Paths.Login}}";
+    </script>
+    <script src="{{.Paths.Assets}}/js/auth.js"></script>
+    <script src="{{.Paths.Assets}}/js/admin.js"></script>
+</body>
+</html>

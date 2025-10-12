@@ -1,0 +1,57 @@
+/* Admin page specific container */
+.admin-container {
+    max-width: 95%;
+    width: 1200px;
+    margin: 2rem auto;
+}
+
+/* Responsive wrapper for the table */
+.table-container {
+    overflow-x: auto;
+    width: 100%;
+    margin-top: 1.5rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+/* Admin Table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 800px; /* Prevent table from becoming too cramped */
+}
+
+th, td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+    white-space: nowrap; /* Prevent content from wrapping */
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+th {
+    background-color: #f7f7f7;
+    font-weight: 600;
+}
+
+td button {
+    margin-right: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    width: auto; /* Override common button width */
+    font-size: 0.875rem;
+}
+
+td select {
+    padding: 0.25rem 0.5rem;
+}
+
+button.delete {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+button.delete:hover {
+    background-color: #c82333;
+}
