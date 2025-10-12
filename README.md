@@ -1,3 +1,44 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [Auth Proxy](#auth-proxy)
+  - [Try the Demo](#try-the-demo)
+  - [Why I Built This](#why-i-built-this)
+  - [Features](#features)
+  - [Security and Authentication Details](#security-and-authentication-details)
+    - [CSRF Protection](#csrf-protection)
+    - [Password Encryption](#password-encryption)
+    - [Authentication Flow](#authentication-flow)
+      - [1. Web UI (Session-Based)](#1-web-ui-session-based)
+      - [2. API (JWT-Based)](#2-api-jwt-based)
+    - [Session Management](#session-management)
+      - [Web UI Sessions](#web-ui-sessions)
+      - [API Sessions (Stateless with JWT)](#api-sessions-stateless-with-jwt)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Installation](#installation)
+    - [Configuration](#configuration)
+- [Example `.env` file:](#example-env-file)
+    - [Frontend Selection](#frontend-selection)
+      - [PHP Frontend Setup](#php-frontend-setup)
+    - [Database Setup Examples](#database-setup-examples)
+      - [PostgreSQL](#postgresql)
+      - [MySQL / MariaDB](#mysql--mariadb)
+  - [Usage](#usage)
+  - [Issuing API Tokens (Bearer Tokens)](#issuing-api-tokens-bearer-tokens)
+    - [Proxying to Protected Backend APIs](#proxying-to-protected-backend-apis)
+  - [Admin API Endpoints](#admin-api-endpoints)
+    - [List Users](#list-users)
+    - [Create User](#create-user)
+    - [Update User Role](#update-user-role)
+    - [Update User Status](#update-user-status)
+    - [Delete User](#delete-user)
+  - [Configuration Details](#configuration-details)
+  - [demo](#demo)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 <img width="1366" height="526" alt="image" src="https://github.com/user-attachments/assets/eab0085e-00d9-434a-b8eb-6c174fa59f5d" />
 
 
@@ -88,6 +129,14 @@ For subsequent requests from a browser, the `auth_token` cookie is automatically
 For API requests, the client must include the JWT Access Token in the `Authorization: Bearer <token>` header. A middleware on the server validates the token's signature and expiration time. This process is stateless, meaning it does not require a database lookup for every request, making it highly efficient. If the access token has expired, the client can use the refresh token to request a new access token without re-authenticating.
 
 **Note on Authentication Precedence:** When an API endpoint is protected (i.e., `PROTECT_API=true`), the middleware first looks for an `Authorization: Bearer` header. If this header is not present, it will fall back to validating the `auth_token` session cookie. This allows users who are logged into the web UI to also authenticate to the API using their browser session, but it means that API endpoints are accessible via either a valid JWT or a valid session cookie.
+
+### Transport Layer Security (HTTPS)
+
+For production environments, it is **critical** to run this proxy behind a TLS-terminating reverse proxy (like Nginx, Caddy, or a cloud load balancer).
+
+This application does not handle HTTPS termination itself. By default, it communicates over HTTP. If you deploy it without a secure proxy in front, sensitive data like user passwords sent during login could be intercepted in a Man-in-the-Middle (MITM) attack.
+
+Ensure that all traffic between clients and this proxy is encrypted via HTTPS.
 
 ## Getting Started
 
