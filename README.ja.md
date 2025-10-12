@@ -86,8 +86,6 @@ bash run-demo.sh
 この保護はデフォルトで有効になっています。以下の環境変数を使用して設定できます。
 
 - `XSRF_SECRET_KEY`: XSRFトークンの署名に使用される、長くてランダムな秘密鍵。
-- `XSRF_TRUSTED_ORIGINS`: 信頼できるオリジンのカンマ区切りリスト。フロントエンドがプロキシと異なるドメインでホストされている場合は、フロントエンドのオリジンをこのリストに追加する必要があります。
-- `XSRF_SAME_SITE`: XSRFクッキーの`SameSite`属性。`lax`（デフォルト）、`strict`、または`none`に設定できます。`none`に設定した場合は、`ENV=production`も設定してセキュアなクッキーを有効にする必要があります。
 
 ### パスワードの暗号化
 
@@ -539,5 +537,3 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/config
 | `AUTH_ASSETS_PATH` | 内部静的アセット（CSS, JS）を提供するためのURLパス。 | `/assets` |
 | `ENV` | ランタイム環境。セキュアなクッキーを有効にするには`production`に設定します。 | - |
 | `XSRF_SECRET_KEY` | **(必須)** XSRF保護のための32バイトのランダムなキー。`openssl rand -base64 32` で生成します。 | - |
-| `XSRF_TRUSTED_ORIGINS` | XSRF保護のための信頼できるオリジンのカンマ区切りリスト。 | - |
-| `XSRF_SAME_SITE` | XSRFクッキーのSameSite属性。`lax`、`strict`、または`none`にすることができます。 | `lax` |
