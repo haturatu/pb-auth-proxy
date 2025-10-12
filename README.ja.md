@@ -343,6 +343,24 @@ Authorization: Bearer <access_token>
 
 **注意:** トークンの有効期間は `.env` ファイルで設定できます。詳細は設定表を参照してください。
 
+### 保護されたバックエンドAPIへのプロキシ
+
+`PROTECT_API=true` の場合、`API_PATH`（例: `/api/`）以下のパスへのリクエストのうち、内部の管理エンドポイントではないものは、認証された上でバックエンドの `TARGET_URL` へとプロキシされます。
+
+これにより、独自のバックエンドAPIを同じ認証メカニズムで保護することができます。認証は、有効な `Authorization: Bearer` トークン、またはフォールバックとして有効なWebセッションクッキーのいずれかを使用して検証されます。
+
+**保護されたバックエンドAPIへの `curl` の例:**
+
+```sh
+ACCESS_TOKEN="your_access_token"
+curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/config
+```
+
+**バックエンドからの成功レスポンス例:**
+```json
+{"success":true,"data":{"StorageDir":"/home/haturatu","MountDirs":[],"MaxFileSize":10000,"SpecificDirs":["/home/haturatu/git"],"Aria2cEnabled":true}}
+```
+
 ## 管理APIエンドポイント
 
 管理タスクのために、プロキシはプログラムからアクセス可能なAPIエンドポイントをいくつか提供しています。これらのエンドポイントはすべて、`admin`ロールを持つユーザーの有効なベアラートークンが必要です。

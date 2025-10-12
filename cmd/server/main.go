@@ -167,21 +167,36 @@ func main() {
 
 	// --- Final Handler ---
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logging.AppLog.Info("Final handler received request", "path", r.URL.Path)
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			logging.AppLog.Info("Routing to API mux")
-			apiMux.ServeHTTP(w, r)
+
+		// Handle API paths
+		if strings.HasPrefix(r.URL.Path, config.Paths.APIPath) {
+			// Check if a specific handler exists in the API mux
+			_, pattern := apiMux.Handler(r)
+
+			// If a specific pattern is found, let the API mux handle it internally.
+			if pattern != "" {
+				apiMux.ServeHTTP(w, r)
+				return
+			}
+
+			// If no specific handler is found, it's a request to be proxied.
+			// Protect it with Bearer/Cookie auth if PROTECT_API is enabled.
+			if config.Paths.ProtectAPI {
+				middleware.BearerAuth(proxyHandler).ServeHTTP(w, r)
+			} else {
+				proxyHandler.ServeHTTP(w, r)
+			}
 			return
 		}
 
-		// Check if the path is a web UI path
+		// Check if the path is a web UI path and apply CSRF protection
 		_, webPattern := webMux.Handler(r)
 		if webPattern != "" {
 			csrfProtectedWebMux.ServeHTTP(w, r)
 			return
 		}
 
-		// Fallback to proxy
+		// Fallback to proxy for all other paths
 		if config.Paths.ProtectFrontend {
 			middleware.SessionAuth(proxyHandler).ServeHTTP(w, r)
 		} else {

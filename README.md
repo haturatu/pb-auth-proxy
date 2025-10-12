@@ -341,6 +341,24 @@ The `refresh_token` is a long-lived token that can be used to obtain a new acces
 
 **Note:** The token lifetimes can be configured in your `.env` file. See the configuration table for details.
 
+### Proxying to Protected Backend APIs
+
+When `PROTECT_API=true`, any request to a path under `API_PATH` (e.g., `/api/`) that is not one of the internal administrative endpoints will be authenticated and then proxied to your backend `TARGET_URL`.
+
+This allows you to protect your own backend APIs using the same authentication mechanism. Authentication is verified using either a valid `Authorization: Bearer` token or, as a fallback, a valid web session cookie.
+
+**Example `curl` to a protected backend API:**
+
+```sh
+ACCESS_TOKEN="your_access_token"
+curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/config
+```
+
+**Example successful response from the backend:**
+```json
+{"success":true,"data":{"StorageDir":"/home/haturatu","MountDirs":[],"MaxFileSize":10000,"SpecificDirs":["/home/haturatu/git"],"Aria2cEnabled":true}}
+```
+
 ## Admin API Endpoints
 
 For administrative tasks, the proxy provides several API endpoints that can be accessed programmatically. All of these endpoints require a valid Bearer Token from a user with the `admin` role.
