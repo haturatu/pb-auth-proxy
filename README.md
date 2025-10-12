@@ -1,3 +1,6 @@
+<img width="1366" height="526" alt="image" src="https://github.com/user-attachments/assets/eab0085e-00d9-434a-b8eb-6c174fa59f5d" />
+
+
 # Auth Proxy
 
 This is a simple authenticating reverse proxy written in Go. It provides a flexible authentication layer that can be placed in front of any backend web service.
@@ -491,3 +494,7 @@ The base path for these endpoints is `/api/admin/users`, which can be customized
 | `CSRF_SECRET_KEY` | **(Required)** A 32-byte random key for CSRF protection. Generate with `openssl rand -base64 32`. | - |
 | `CSRF_TRUSTED_ORIGINS` | A comma-separated list of trusted origins for CSRF protection. | - |
 | `CSRF_SAME_SITE` | The SameSite attribute for the CSRF cookie. Can be `lax`, `strict`, or `none`. | `lax` |
+
+## demo
+<img width="1366" height="461" alt="image" src="https://github.com/user-attachments/assets/17632b15-b0a3-4cc7-bafa-7392a209bcc7" />
+<img width="1366" height="461" alt="image" src="https://github.com/user-attachments/assets/bea8beb4-485b-4fac-9015-bf2c9d3490ac" />
