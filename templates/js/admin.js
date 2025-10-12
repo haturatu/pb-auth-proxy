@@ -7,8 +7,11 @@
  * @returns {Promise<Response>}
  */
 async function fetchApi(url, options = {}) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
     options.headers = {
         ...options.headers,
+        'X-CSRF-Token': csrfToken
     };
 
     // Set content type for methods that have a body.

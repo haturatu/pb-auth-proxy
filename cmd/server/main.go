@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/gorilla/csrf"
 )
 
 func main() {
@@ -113,6 +114,7 @@ func main() {
 
 	// --- Protected API Endpoints (for Admin UI, protected by SessionAuth) ---
 	adminCreateUserAPI := http.HandlerFunc(handlers.CreateUserHandler)
+	getUsersHandler := http.HandlerFunc(handlers.GetUsersHandler)
 	adminUsersAPI := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			adminCreateUserAPI.ServeHTTP(w, r)
@@ -175,24 +177,41 @@ func main() {
 	}
 	listenAddr := ":" + port
 
+	// --- CSRF Protection ---
+	csrfSecret := os.Getenv("CSRF_SECRET_KEY")
+	if csrfSecret == "" {
+		logging.AppLog.Error("CSRF_SECRET_KEY environment variable not set")
+		os.Exit(1)
+	}
+	// In production, you should set csrf.Secure(true).
+	// You can use an environment variable to control this setting.
+	csrfOptions := []csrf.Option{
+		csrf.Secure(true), // Set to true in production
+		csrf.Path("/"),
+	}
+
+	trustedOrigins := os.Getenv("CSRF_TRUSTED_ORIGINS")
+	if trustedOrigins != "" {
+		origins := strings.Split(trustedOrigins, ",")
+		csrfOptions = append(csrfOptions, csrf.TrustedOrigins(origins))
+	}
+
+	csrfMiddleware := csrf.Protect(
+		[]byte(csrfSecret),
+		csrfOptions...,
+	)
+
 	// --- Start Server ---
 	logging.AppLog.Info("Server starting on " + listenAddr)
 
-		// Start periodic background tasks
+	// Start periodic background tasks
+	go startBackgroundTasks(pool, rateLimiter)
 
-		go startBackgroundTasks(pool, rateLimiter)
-
-	
-
-		if err := http.ListenAndServe(listenAddr, finalHandler); err != nil {
-
-			logging.AppLog.Error("Server failed to start", "error", err)
-
-			os.Exit(1)
-
-		}
-
+	if err := http.ListenAndServe(listenAddr, csrfMiddleware(finalHandler)); err != nil {
+		logging.AppLog.Error("Server failed to start", "error", err)
+		os.Exit(1)
 	}
+}
 
 	
 

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gorilla/csrf"
 	fcgiclient "github.com/tomasen/fcgi_client"
 )
 
@@ -77,6 +78,9 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 		env["AUTH_PATH_ADMIN"] = config.Paths.Admin
 		env["AUTH_PATH_ADMIN_USERS_API"] = config.Paths.AdminUsersAPI
 		env["AUTH_ASSETS_PATH"] = config.Paths.Assets
+
+		// Pass CSRF token to PHP
+		env["HTTP_X_CSRF_TOKEN"] = csrf.Token(r)
 
 
 		// Asynchronously log the proxying action to avoid blocking the request.

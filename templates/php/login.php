@@ -17,6 +17,7 @@
     <div class="container form-container">
         <h2>Login Required</h2>
         <form id="login-form" action="<?php echo htmlspecialchars($paths['Login']); ?>" method="post">
+            <input type="hidden" name="gorilla.csrf.Token" value="<?php echo htmlspecialchars($_SERVER['HTTP_X_CSRF_TOKEN']); ?>">
             <div class="form-group">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" required>

@@ -8,6 +8,8 @@ import (
 	"auth-proxy/utils"
 	"encoding/json"
 	"net/http"
+
+	"github.com/gorilla/csrf"
 )
 
 // AccountPageHandler serves the account page, passing user data to the template.
@@ -20,8 +22,9 @@ func AccountPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Paths": config.Paths,
-		"User":  user,
+		"Paths":     config.Paths,
+		"User":      user,
+		"CSRFToken": csrf.Token(r),
 	}
 	if err := templates.ExecuteTemplate(w, "account.html", data); err != nil {
 		logging.AppLog.Error("Failed to execute account template", "error", err, "user_id", user.ID)
@@ -33,7 +36,8 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 	// For GET request, just serve the page.
 	if r.Method == http.MethodGet {
 		data := map[string]interface{}{
-			"Paths": config.Paths,
+			"Paths":     config.Paths,
+			"CSRFToken": csrf.Token(r),
 		}
 		if err := templates.ExecuteTemplate(w, "account_password.html", data); err != nil {
 			logging.AppLog.Error("Failed to execute account_password template", "error", err)

@@ -11,15 +11,18 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/gorilla/csrf"
 )
 
 var templates = template.Must(template.ParseGlob("templates/*.html"))
 
-func renderLoginWithError(w http.ResponseWriter, message string) {
+func renderLoginWithError(w http.ResponseWriter, r *http.Request, message string) {
 	data := map[string]interface{}{
 		"Paths":           config.Paths,
 		"Error":           message,
 		"RegisterEnabled": config.Paths.RegisterEnabled,
+		"CSRFToken":       csrf.Token(r),
 	}
 	w.WriteHeader(http.StatusUnauthorized) // Set status to indicate failure
 	if err := templates.ExecuteTemplate(w, "login.html", data); err != nil {
@@ -35,6 +38,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		data := map[string]interface{}{
 			"Paths":           config.Paths,
 			"RegisterEnabled": config.Paths.RegisterEnabled,
+			"CSRFToken":       csrf.Token(r),
 		}
 		if err := templates.ExecuteTemplate(w, "login.html", data); err != nil {
 			logging.AppLog.Error("Failed to execute login template", "error", err, "ip", ip)
@@ -45,7 +49,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		if err := r.ParseForm(); err != nil {
 			logging.AppLog.Error("Failed to parse login form", "error", err, "ip", ip)
-			renderLoginWithError(w, "An internal error occurred. Please try again.")
+			renderLoginWithError(w, r, "An internal error occurred. Please try again.")
 			return
 		}
 		username := r.FormValue("username")
@@ -70,13 +74,13 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 				lockoutDuration := time.Duration(lockoutMinutes) * time.Minute
 				if time.Since(user.UpdatedAt) < lockoutDuration {
 					logging.SecurityLog.Warn("LOGIN FAIL", "username", username, "ip", ip, "reason", "account locked")
-					renderLoginWithError(w, "Account is temporarily locked.")
+					renderLoginWithError(w, r, "Account is temporarily locked.")
 					return
 				} else {
 					// If lockout expired, re-activate account and reset attempts
 					if err := models.SetUserActiveStatus(user.ID, true); err != nil {
 						logging.AppLog.Error("Failed to reactivate user", "error", err, "user_id", user.ID, "ip", ip)
-						renderLoginWithError(w, "An internal error occurred. Please try again.")
+						renderLoginWithError(w, r, "An internal error occurred. Please try again.")
 						return
 					}
 					if err := models.RecordLoginSuccess(user.ID); err != nil {
@@ -104,7 +108,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			logging.SecurityLog.Warn("LOGIN FAIL", "username", username, "ip", ip, "reason", "invalid credentials")
-			renderLoginWithError(w, "Invalid username or password.")
+			renderLoginWithError(w, r, "Invalid username or password.")
 			return
 		}
 
@@ -181,10 +185,11 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, config.Paths.Login, http.StatusFound)
 }
 
-func renderRegisterWithError(w http.ResponseWriter, message string) {
+func renderRegisterWithError(w http.ResponseWriter, r *http.Request, message string) {
 	data := map[string]interface{}{
-		"Paths": config.Paths,
-		"Error": message,
+		"Paths":     config.Paths,
+		"Error":     message,
+		"CSRFToken": csrf.Token(r),
 	}
 	w.WriteHeader(http.StatusBadRequest) // Set status to indicate failure
 	if err := templates.ExecuteTemplate(w, "register.html", data); err != nil {
@@ -200,7 +205,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := logging.GetClientIP(r)
 	data := map[string]interface{}{
-		"Paths": config.Paths,
+		"Paths":     config.Paths,
+		"CSRFToken": csrf.Token(r),
 	}
 
 	if r.Method == http.MethodGet {
@@ -213,7 +219,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		if err := r.ParseForm(); err != nil {
 			logging.AppLog.Error("Failed to parse registration form", "error", err, "ip", ip)
-			renderRegisterWithError(w, "An internal error occurred. Please try again.")
+			renderRegisterWithError(w, r, "An internal error occurred. Please try again.")
 			return
 		}
 		username := r.FormValue("username")
@@ -222,32 +228,32 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Validate password policy
 		if ok, message := utils.ValidatePassword(password); !ok {
-			renderRegisterWithError(w, message)
+			renderRegisterWithError(w, r, message)
 			return
 		}
 
 		if password != confirmPassword {
 			logging.AppLog.Warn("User registration failed", "reason", "passwords do not match", "ip", ip)
-			renderRegisterWithError(w, "Passwords do not match")
+			renderRegisterWithError(w, r, "Passwords do not match")
 			return
 		}
 
 		existingUser, err := models.GetUserByUsername(username)
 		if err != nil {
 			logging.AppLog.Error("Error checking username during registration", "error", err, "ip", ip)
-			renderRegisterWithError(w, "An internal error occurred while checking the username.")
+			renderRegisterWithError(w, r, "An internal error occurred while checking the username.")
 			return
 		}
 		if existingUser != nil {
 			logging.AppLog.Warn("User registration failed", "reason", "username is already taken", "username", username, "ip", ip)
-			renderRegisterWithError(w, "Username is already taken")
+			renderRegisterWithError(w, r, "Username is already taken")
 			return
 		}
 
 		user, err := models.CreateUser(username, password, "user")
 		if err != nil {
 			logging.AppLog.Error("Failed to create user", "error", err, "username", username, "ip", ip)
-			renderRegisterWithError(w, "Failed to create user due to an internal error.")
+			renderRegisterWithError(w, r, "Failed to create user due to an internal error.")
 			return
 		}
 		logging.SecurityLog.Info("USER CREATED", "username", user.Username, "ip", ip)

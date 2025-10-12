@@ -10,6 +10,7 @@
     <div class="container form-container">
         <h2>Create Account</h2>
         <form id="register-form" action="{{.Paths.Register}}" method="post">
+            <input type="hidden" name="gorilla.csrf.Token" value="{{.CSRFToken}}">
             <div class="form-group">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" required>
