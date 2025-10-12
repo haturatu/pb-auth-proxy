@@ -30,9 +30,6 @@ func renderLoginWithError(w http.ResponseWriter, message string) {
 // LoginHandler handles displaying the login form and processing login requests.
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	ip := logging.GetClientIP(r)
-	data := map[string]interface{}{
-		"Paths": config.Paths,
-	}
 
 	if r.Method == http.MethodGet {
 		data := map[string]interface{}{
