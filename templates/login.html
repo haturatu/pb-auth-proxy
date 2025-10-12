@@ -26,7 +26,9 @@
             {{end}}
         </p>
         <div style="text-align: center; margin-top: 1rem;">
+            {{if .RegisterEnabled}}
             <a href="{{.Paths.Register}}">Don't have an account? Register</a>
+            {{end}}
         </div>
     </div>
     <script src="{{.Paths.Assets}}/js/auth.js"></script>

@@ -47,5 +47,6 @@ func Init() {
 		ProtectAPI:      getEnvAsBool("PROTECT_API", false),
 		FrontPath:       getEnv("FRONT_PATH", "/"),
 		APIPath:         getEnv("API_PATH", "/api/"),
+		RegisterEnabled: getEnvAsBool("REGISTER", true),
 	}
 }

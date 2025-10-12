@@ -356,5 +356,6 @@ Authorization: Bearer <access_token>
 | `PROTECT_API` | `true`の場合、すべてのAPIパスをベアラートークン認証経由でプロキシします。 | `false` |
 | `FRONT_PATH` | `PROTECT_FRONTEND`で保護されるフロントエンドのベースパス。 | `/` |
 | `API_PATH` | `PROTECT_API`で保護されるAPIルートのベースパス。 | `/api/` |
+| `REGISTER` | `false`に設定すると、新規ユーザー登録を無効にします。 | `true` |
 | `AUTH_PATH_*` | ログイン、管理者ページなどの内部URLをカスタマイズするための変数セット。 | 様々、例: `/login`|
 | `AUTH_ASSETS_PATH` | 内部静的アセット（CSS, JS）を提供するためのURLパス。 | `/assets` |

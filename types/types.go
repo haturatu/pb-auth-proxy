@@ -20,6 +20,7 @@ type PathConfig struct {
 	ProtectAPI      bool
 	FrontPath       string
 	APIPath         string
+	RegisterEnabled bool
 }
 
 // ContextKey is a custom type for context keys to avoid collisions.

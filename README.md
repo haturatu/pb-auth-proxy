@@ -354,5 +354,6 @@ The `refresh_token` is a long-lived token that can be used to obtain a new acces
 | `PROTECT_API` | If `true`, proxies all API paths through bearer token authentication. | `false` |
 | `FRONT_PATH` | The base path for frontend routes to be protected by `PROTECT_FRONTEND`. | `/` |
 | `API_PATH` | The base path for API routes to be protected by `PROTECT_API`. | `/api/` |
+| `REGISTER` | If set to `false`, disables new user registration. | `true` |
 | `AUTH_PATH_*` | A set of variables to customize the internal URLs for login, admin, etc. | Various, e.g., `/login`|
 | `AUTH_ASSETS_PATH` | The URL path for serving internal static assets (CSS, JS). | `/assets` |

@@ -17,8 +17,9 @@ var templates = template.Must(template.ParseGlob("templates/*.html"))
 
 func renderLoginWithError(w http.ResponseWriter, message string) {
 	data := map[string]interface{}{
-		"Paths": config.Paths,
-		"Error": message,
+		"Paths":           config.Paths,
+		"Error":           message,
+		"RegisterEnabled": config.Paths.RegisterEnabled,
 	}
 	w.WriteHeader(http.StatusUnauthorized) // Set status to indicate failure
 	if err := templates.ExecuteTemplate(w, "login.html", data); err != nil {
@@ -34,6 +35,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodGet {
+		data := map[string]interface{}{
+			"Paths":           config.Paths,
+			"RegisterEnabled": config.Paths.RegisterEnabled,
+		}
 		if err := templates.ExecuteTemplate(w, "login.html", data); err != nil {
 			logging.AppLog.Error("Failed to execute login template", "error", err, "ip", ip)
 		}
@@ -192,6 +197,10 @@ func renderRegisterWithError(w http.ResponseWriter, message string) {
 
 // RegisterHandler handles displaying and processing the user registration form.
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
+	if !config.Paths.RegisterEnabled {
+		http.Error(w, "User registration is disabled.", http.StatusForbidden)
+		return
+	}
 	ip := logging.GetClientIP(r)
 	data := map[string]interface{}{
 		"Paths": config.Paths,
