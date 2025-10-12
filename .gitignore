@@ -1,6 +1,6 @@
 # Binaries
-auth-proxy-server
-admin-cli
+/auth-proxy-server
+/admin-cli
 
 # DB file
 auth.db
