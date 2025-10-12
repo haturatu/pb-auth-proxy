@@ -97,3 +97,9 @@ type WorkerPool struct {
 	Wg         sync.WaitGroup
 	Active     int64
 }
+
+// EnrichedUser is a wrapper for User with additional computed fields for admin views.
+type EnrichedUser struct {
+	*User
+	TimeSinceLogin string `json:"time_since_login"`
+}

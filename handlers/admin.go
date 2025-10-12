@@ -44,12 +44,7 @@ func AdminPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// EnrichedUser is a wrapper for User with additional computed fields.
-// Note: We use pointers to the original User to avoid copying large structs.
-type EnrichedUser struct {
-	*types.User
-	TimeSinceLogin string `json:"time_since_login"`
-}
+
 
 // GetUsersHandler returns a list of all users with enriched information.
 // It uses a worker pool to calculate extra information for each user in parallel.
@@ -62,7 +57,7 @@ func GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	enrichedUsers := make([]EnrichedUser, len(users))
+	enrichedUsers := make([]types.EnrichedUser, len(users))
 	var wg sync.WaitGroup
 
 	for i, user := range users {
@@ -81,7 +76,7 @@ func GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 				timeSinceLogin = fmt.Sprintf("%.0fm ago", time.Since(userCopy.LastLoginAt.Time).Minutes())
 			}
 
-			enrichedUsers[index] = EnrichedUser{
+			enrichedUsers[index] = types.EnrichedUser{
 				User:           &userCopy,
 				TimeSinceLogin: timeSinceLogin,
 			}
