@@ -100,6 +100,16 @@ func renderLoginWithError(w http.ResponseWriter, r *http.Request, message string
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	ip := logging.GetClientIP(r)
 
+	// If user is already logged in, redirect to account page
+	cookie, err := r.Cookie("auth_token")
+	if err == nil {
+		user, _ := models.GetUserByToken(cookie.Value)
+		if user != nil {
+			http.Redirect(w, r, config.Paths.Account, http.StatusFound)
+			return
+		}
+	}
+
 	if r.Method == http.MethodGet {
 		data := map[string]interface{}{
 			"Paths":           config.Paths,
