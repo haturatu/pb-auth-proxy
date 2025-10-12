@@ -112,13 +112,21 @@ func main() {
 	mux.HandleFunc("/api/auth/token", handlers.TokenHandler)
 
 	// --- Protected API Endpoints (for Admin UI, protected by SessionAuth) ---
-	adminUsersAPI := http.HandlerFunc(handlers.GetUsersHandler)
+	adminCreateUserAPI := http.HandlerFunc(handlers.CreateUserHandler)
+	adminUsersAPI := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			adminCreateUserAPI.ServeHTTP(w, r)
+		} else {
+			getUsersHandler.ServeHTTP(w, r)
+		}
+	})
+
 	adminUpdateRoleAPI := http.HandlerFunc(handlers.UpdateUserRoleHandler)
 	adminDeleteUserAPI := http.HandlerFunc(handlers.DeleteUserHandler)
 	adminSetStatusAPI := http.HandlerFunc(handlers.SetUserActiveStatusHandler)
 
-	mux.Handle(config.Paths.AdminUsersAPI, middleware.SessionAuth(middleware.AdminMiddleware(adminUsersAPI)))
-	mux.Handle(config.Paths.AdminUsersAPI+"/", middleware.SessionAuth(middleware.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(config.Paths.AdminUsersAPI, middleware.BearerAuth(middleware.AdminMiddleware(adminUsersAPI)))
+	mux.Handle(config.Paths.AdminUsersAPI+"/", middleware.BearerAuth(middleware.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
 		case strings.HasSuffix(path, "/role") && r.Method == http.MethodPost:

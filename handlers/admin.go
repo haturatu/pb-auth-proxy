@@ -205,3 +205,54 @@ func SetUserActiveStatusHandler(w http.ResponseWriter, r *http.Request) {
 	logging.SecurityLog.Info("ADMIN ACTION", "action", "set_active_status", "performed_by", adminUsername, "target_user_id", id, "new_status", req.IsActive, "ip", ip)
 	w.WriteHeader(http.StatusOK)
 }
+
+// CreateUserHandler handles creating a new user by an admin.
+func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
+	ip := logging.GetClientIP(r)
+
+	var reqBody struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Default role to "user" if not provided or invalid
+	if reqBody.Role != "admin" && reqBody.Role != "user" {
+		reqBody.Role = "user"
+	}
+
+	// Validate password policy
+	if ok, message := utils.ValidatePassword(reqBody.Password); !ok {
+		http.Error(w, message, http.StatusBadRequest)
+		return
+	}
+
+	existingUser, err := models.GetUserByUsername(reqBody.Username)
+	if err != nil {
+		logging.AppLog.Error("Error checking username during admin user creation", "error", err, "ip", ip)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	if existingUser != nil {
+		http.Error(w, "Username is already taken", http.StatusConflict)
+		return
+	}
+
+	user, err := models.CreateUser(reqBody.Username, reqBody.Password, reqBody.Role)
+	if err != nil {
+		logging.AppLog.Error("Failed to create user via admin API", "error", err, "username", reqBody.Username, "ip", ip)
+		http.Error(w, "Failed to create user", http.StatusInternalServerError)
+		return
+	}
+
+	logging.SecurityLog.Info("USER CREATED BY ADMIN", "username", user.Username, "role", user.Role, "ip", ip)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(user)
+}
