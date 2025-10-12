@@ -2,24 +2,11 @@ package models
 
 import (
 	"auth-proxy/database"
+	"auth-proxy/types"
 	"database/sql"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
-
-// User represents a user in the database
-type User struct {
-	ID            int64        `json:"id"`
-	Username      string       `json:"username"`
-	PasswordHash  string       `json:"-"`
-	Role          string       `json:"role"`
-	IsActive      bool         `json:"is_active"`
-	FailedLogins  int          `json:"failed_logins"`
-	LastLoginAt   sql.NullTime `json:"last_login_at"`
-	CreatedAt     time.Time    `json:"created_at"`
-	UpdatedAt     time.Time    `json:"updated_at"`
-}
 
 // HashPassword generates a bcrypt hash of the password
 func HashPassword(password string) (string, error) {
@@ -34,7 +21,7 @@ func CheckPasswordHash(password, hash string) bool {
 }
 
 // CreateUser creates a new user in the database
-func CreateUser(username, password, role string) (*User, error) {
+func CreateUser(username, password, role string) (*types.User, error) {
 	passwordHash, err := HashPassword(password)
 	if err != nil {
 		return nil, err
@@ -45,7 +32,7 @@ func CreateUser(username, password, role string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer stmt.Close()
+	defer stmt.Close() //nolint:errcheck
 
 	_, err = stmt.Exec(username, passwordHash, role)
 	if err != nil {
@@ -59,8 +46,8 @@ func CreateUser(username, password, role string) (*User, error) {
 const baseSelectQuery = "SELECT id, username, password_hash, role, is_active, failed_logins, last_login_at, created_at, updated_at FROM users"
 
 // scanUser scans a row into a User struct
-func scanUser(row *sql.Row) (*User, error) {
-	user := &User{}
+func scanUser(row *sql.Row) (*types.User, error) {
+	user := &types.User{}
 	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.IsActive, &user.FailedLogins, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -72,30 +59,30 @@ func scanUser(row *sql.Row) (*User, error) {
 }
 
 // GetUserByUsername retrieves a user by their username
-func GetUserByUsername(username string) (*User, error) {
+func GetUserByUsername(username string) (*types.User, error) {
 	query := database.Rebind(baseSelectQuery + " WHERE username = ?")
 	row := database.DB.QueryRow(query, username)
 	return scanUser(row)
 }
 
 // GetUserByID retrieves a user by their ID
-func GetUserByID(id int64) (*User, error) {
+func GetUserByID(id int64) (*types.User, error) {
 	query := database.Rebind(baseSelectQuery + " WHERE id = ?")
 	row := database.DB.QueryRow(query, id)
 	return scanUser(row)
 }
 
 // GetAllUsers retrieves all users from the database
-func GetAllUsers() ([]User, error) {
+func GetAllUsers() ([]types.User, error) {
 	rows, err := database.DB.Query(baseSelectQuery)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
-	var users []User
+	var users []types.User
 	for rows.Next() {
-		var user User
+		var user types.User
 		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.IsActive, &user.FailedLogins, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt); err != nil {
 			return nil, err
 		}

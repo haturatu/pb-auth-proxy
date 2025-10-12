@@ -5,76 +5,137 @@ import (
 	"auth-proxy/logging"
 	"auth-proxy/models"
 	"auth-proxy/types"
+	"auth-proxy/utils"
 	"context"
 	"database/sql"
 	"net/http"
 	"strings"
 )
 
-// AuthMiddleware checks for a valid Bearer token, suitable for API endpoints.
-// If the token is valid, it adds the user info to the context and proceeds.
-// If not, it returns a 401 Unauthorized error.
-func AuthMiddleware(next http.Handler) http.Handler {
+// SessionAuth is a middleware that checks for a valid session cookie.
+// If the session is valid, it proceeds. If not, it redirects to the login page.
+// This is suitable for protecting frontend routes.
+func SessionAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := logging.GetClientIP(r)
 		cookie, err := r.Cookie("auth_token")
 
-		// If the cookie is not found
 		if err != nil {
 			if err == http.ErrNoCookie {
-				// If it's an API request, return 401.
-				if strings.HasPrefix(r.URL.Path, "/api/") {
-					logging.AppLog.Info("API access denied (no token)", "path", r.URL.Path, "ip", ip)
-					http.Error(w, "Unauthorized: A valid token is required", http.StatusUnauthorized)
-					return
-				}
-				// Otherwise, it's a page navigation, so redirect to login.
-				logging.AppLog.Info("Redirecting to login (no token)", "path", r.URL.Path, "ip", ip)
+				logging.AppLog.Info("Redirecting to login (no session cookie)", "path", r.URL.Path, "ip", ip)
 				http.Redirect(w, r, config.Paths.Login, http.StatusFound)
 				return
 			}
-			// For any other error retrieving the cookie
 			logging.AppLog.Error("Error reading auth cookie", "error", err, "path", r.URL.Path, "ip", ip)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
 		tokenStr := cookie.Value
-		user, err := models.GetUserByToken(tokenStr)
-		// Check for database errors first
+		user, err := models.GetUserByToken(tokenStr) // This still relies on the session token in the DB
 		if err != nil && err != sql.ErrNoRows {
-			logging.AppLog.Error("Error validating token", "error", err, "path", r.URL.Path, "ip", ip)
+			logging.AppLog.Error("Error validating session token", "error", err, "path", r.URL.Path, "ip", ip)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
 		if user == nil {
-			// Token was provided but is invalid or expired. Clear the bad cookie.
+			// Clear the invalid cookie
 			http.SetCookie(w, &http.Cookie{
 				Name:   "auth_token",
 				Value:  "",
 				Path:   "/",
 				MaxAge: -1,
 			})
-			logging.SecurityLog.Warn("ACCESS DENIED", "reason", "invalid or expired token", "path", r.URL.Path, "ip", ip)
-			// Redirect to login, as the user needs to re-authenticate.
+			logging.SecurityLog.Warn("ACCESS DENIED", "reason", "invalid or expired session token", "path", r.URL.Path, "ip", ip)
 			http.Redirect(w, r, config.Paths.Login, http.StatusFound)
 			return
 		}
 
-		// User is authenticated, proceed
+		ctx := context.WithValue(r.Context(), types.SessionDataContextKey, user)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// BearerAuth is a middleware that checks for a valid JWT Bearer token.
+// If the token is valid, it adds the user info to the context and proceeds.
+// If not, it returns a 401 Unauthorized error. Suitable for API endpoints.
+func BearerAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := logging.GetClientIP(r)
+		authHeader := r.Header.Get("Authorization")
+
+		// Prefer Authorization header if it exists
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+				logging.SecurityLog.Warn("API ACCESS DENIED", "reason", "invalid authorization header format", "path", r.URL.Path, "ip", ip)
+				http.Error(w, "Unauthorized: Invalid authorization header format", http.StatusUnauthorized)
+				return
+			}
+
+			tokenString := parts[1]
+			payload, err := utils.ValidateJWT(tokenString)
+			if err != nil {
+				logging.SecurityLog.Warn("API ACCESS DENIED", "reason", "invalid JWT token", "error", err.Error(), "path", r.URL.Path, "ip", ip)
+				http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			user, err := models.GetUserByID(payload.UserID)
+			if err != nil || user == nil {
+				if err == sql.ErrNoRows || user == nil {
+					logging.SecurityLog.Error("API ACCESS DENIED", "reason", "user from token not found", "user_id", payload.UserID, "path", r.URL.Path, "ip", ip)
+					http.Error(w, "Unauthorized: User not found", http.StatusUnauthorized)
+				} else {
+					logging.AppLog.Error("Error fetching user from DB", "error", err, "user_id", payload.UserID, "path", r.URL.Path, "ip", ip)
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				}
+				return
+			}
+
+			if !user.IsActive {
+				logging.SecurityLog.Warn("API ACCESS DENIED", "reason", "user is inactive", "user_id", user.ID, "path", r.URL.Path, "ip", ip)
+				http.Error(w, "Forbidden: User account is inactive", http.StatusForbidden)
+				return
+			}
+
+			// Add user info to context and proceed
+			ctx := context.WithValue(r.Context(), types.SessionDataContextKey, user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		// --- Fallback to Cookie-based session for browser clients ---
+		cookie, err := r.Cookie("auth_token")
+		if err != nil {
+			// No Authorization header AND no cookie, deny access
+			logging.SecurityLog.Warn("API ACCESS DENIED", "reason", "missing authentication token", "path", r.URL.Path, "ip", ip)
+			http.Error(w, "Unauthorized: An authentication token is required", http.StatusUnauthorized)
+			return
+		}
+
+		tokenStr := cookie.Value
+		user, err := models.GetUserByToken(tokenStr)
+		if err != nil || user == nil {
+			logging.SecurityLog.Warn("API ACCESS DENIED", "reason", "invalid session cookie", "path", r.URL.Path, "ip", ip)
+			http.Error(w, "Unauthorized: Invalid session", http.StatusUnauthorized)
+			return
+		}
+
+		// User is authenticated via cookie, add to context and proceed
 		ctx := context.WithValue(r.Context(), types.SessionDataContextKey, user)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 // AdminMiddleware checks if the user has the 'admin' role.
-// This middleware should be used after AuthMiddleware.
+// This middleware should be used after either SessionAuth or BearerAuth.
 func AdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := logging.GetClientIP(r)
 		// Get user from context
-		user, ok := r.Context().Value(types.SessionDataContextKey).(*models.User)
+		user, ok := r.Context().Value(types.SessionDataContextKey).(*types.User)
 		if !ok || user == nil {
 			logging.SecurityLog.Warn("ADMIN ACCESS DENIED", "reason", "no user data in context", "path", r.URL.Path, "ip", ip)
 			http.Error(w, "Forbidden", http.StatusForbidden)

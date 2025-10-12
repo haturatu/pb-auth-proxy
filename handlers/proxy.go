@@ -19,7 +19,7 @@ func NewProxy(targetURL string) http.Handler {
 	// The default director is mostly fine, but we want to log and ensure the Host header is correct.
 	director := proxy.Director
 	proxy.Director = func(req *http.Request) {
-		director(req) // Run the default director
+		director(req)          // Run the default director
 		req.Host = target.Host // Set the Host header to the target's host
 
 		// Log the proxying action

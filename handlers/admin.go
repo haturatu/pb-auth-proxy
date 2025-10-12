@@ -24,7 +24,9 @@ func AdminPageHandler(w http.ResponseWriter, r *http.Request) {
 		"Paths": config.Paths,
 		"Users": users,
 	}
-	templates.ExecuteTemplate(w, "admin.html", data)
+		if err := templates.ExecuteTemplate(w, "admin.html", data); err != nil {
+		logging.AppLog.Error("Failed to execute admin template", "error", err)
+	}
 }
 
 // GetUsersHandler returns a list of all users.
@@ -38,14 +40,16 @@ func GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users)
+		if err := json.NewEncoder(w).Encode(users); err != nil {
+		logging.AppLog.Error("Failed to encode users to JSON", "error", err, "ip", ip)
+	}
 }
 
 // UpdateUserRoleHandler updates a user's role.
 func UpdateUserRoleHandler(w http.ResponseWriter, r *http.Request) {
 	ip := logging.GetClientIP(r)
 	// Get admin user from context
-	adminUser, ok := r.Context().Value(types.SessionDataContextKey).(*models.User)
+	adminUser, ok := r.Context().Value(types.SessionDataContextKey).(*types.User)
 	if !ok || adminUser == nil {
 		logging.AppLog.Error("Failed to get user from context for admin action", "ip", ip)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -90,7 +94,7 @@ func UpdateUserRoleHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	ip := logging.GetClientIP(r)
 	// Get admin user from context
-	adminUser, ok := r.Context().Value(types.SessionDataContextKey).(*models.User)
+	adminUser, ok := r.Context().Value(types.SessionDataContextKey).(*types.User)
 	if !ok || adminUser == nil {
 		logging.AppLog.Error("Failed to get user from context for admin action", "ip", ip)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -119,7 +123,7 @@ func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 func SetUserActiveStatusHandler(w http.ResponseWriter, r *http.Request) {
 	ip := logging.GetClientIP(r)
 	// Get admin user from context
-	adminUser, ok := r.Context().Value(types.SessionDataContextKey).(*models.User)
+	adminUser, ok := r.Context().Value(types.SessionDataContextKey).(*types.User)
 	if !ok || adminUser == nil {
 		logging.AppLog.Error("Failed to get user from context for admin action", "ip", ip)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)

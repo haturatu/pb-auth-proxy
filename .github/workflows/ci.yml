@@ -19,8 +19,8 @@ jobs:
           go-version: '1.24'
           cache-dependency-path: '**/go.sum'
 
-      - name: Run build script
-        run: bash build.sh
+      - name: Run build
+        run: go build -o auth-proxy-server ./cmd/server && go build -o admin-cli ./cmd/admin-cli
 
   lint:
     name: Lint

@@ -2,19 +2,12 @@ package models
 
 import (
 	"auth-proxy/database"
+	"auth-proxy/types"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"time"
 )
-
-// AuthToken represents a token in the database
-type AuthToken struct {
-	ID        int64
-	UserID    int64
-	Token     string
-	ExpiresAt time.Time
-}
 
 // GenerateSecureToken creates a random, secure token.
 func GenerateSecureToken(length int) (string, error) {
@@ -25,8 +18,8 @@ func GenerateSecureToken(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// CreateAuthToken creates a new token for a user.
-func CreateAuthToken(userID int64, duration time.Duration) (*AuthToken, error) {
+// CreateAuthToken creates a new token for a user, deleting any existing ones.
+func CreateAuthToken(userID int64, duration time.Duration) (*types.AuthToken, error) {
 	tokenString, err := GenerateSecureToken(32)
 	if err != nil {
 		return nil, err
@@ -34,19 +27,29 @@ func CreateAuthToken(userID int64, duration time.Duration) (*AuthToken, error) {
 
 	expiresAt := time.Now().Add(duration)
 
-	query := database.Rebind("INSERT INTO auth_tokens (user_id, token, expires_at) VALUES (?, ?, ?)")
-	stmt, err := database.DB.Prepare(query)
+	tx, err := database.DB.Begin()
 	if err != nil {
 		return nil, err
 	}
-	defer stmt.Close()
+	defer tx.Rollback() //nolint:errcheck
 
-	_, err = stmt.Exec(userID, tokenString, expiresAt)
-	if err != nil {
+	// Delete existing tokens for the user
+	deleteQuery := database.Rebind("DELETE FROM auth_tokens WHERE user_id = ?")
+	if _, err := tx.Exec(deleteQuery, userID); err != nil {
 		return nil, err
 	}
 
-	return &AuthToken{
+	// Insert the new token
+	insertQuery := database.Rebind("INSERT INTO auth_tokens (user_id, token, expires_at) VALUES (?, ?, ?)")
+	if _, err := tx.Exec(insertQuery, userID, tokenString, expiresAt); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &types.AuthToken{
 		UserID:    userID,
 		Token:     tokenString,
 		ExpiresAt: expiresAt,
@@ -55,12 +58,12 @@ func CreateAuthToken(userID int64, duration time.Duration) (*AuthToken, error) {
 
 // GetUserByToken retrieves a user associated with a given token.
 // It returns the user if the token is valid and not expired.
-func GetUserByToken(tokenString string) (*User, error) {
+func GetUserByToken(tokenString string) (*types.User, error) {
 	query := database.Rebind("SELECT u.id, u.username, u.password_hash, u.role, u.is_active, u.failed_logins, u.last_login_at, u.created_at, u.updated_at FROM users u JOIN auth_tokens t ON u.id = t.user_id WHERE t.token = ? AND t.expires_at > ?")
 
 	row := database.DB.QueryRow(query, tokenString, time.Now())
 
-	user := &User{}
+	user := &types.User{}
 	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.IsActive, &user.FailedLogins, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -87,4 +90,65 @@ func DeleteExpiredTokens() (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// CreateRefreshToken creates a new refresh token for a user.
+func CreateRefreshToken(userID int64, duration time.Duration) (*types.RefreshToken, error) {
+	tokenString, err := GenerateSecureToken(32)
+	if err != nil {
+		return nil, err
+	}
+
+	expiresAt := time.Now().Add(duration)
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Delete existing, non-revoked refresh tokens for the user
+	deleteQuery := database.Rebind("DELETE FROM refresh_tokens WHERE user_id = ?")
+	if _, err := tx.Exec(deleteQuery, userID); err != nil {
+		return nil, err
+	}
+
+	// Insert the new refresh token
+	insertQuery := database.Rebind("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)")
+	if _, err := tx.Exec(insertQuery, userID, tokenString, expiresAt); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &types.RefreshToken{
+		UserID:    userID,
+		Token:     tokenString,
+		ExpiresAt: expiresAt,
+	}, nil
+}
+
+// GetRefreshTokenByToken retrieves a refresh token by its token string.
+func GetRefreshTokenByToken(tokenString string) (*types.RefreshToken, error) {
+	query := database.Rebind("SELECT id, user_id, token, expires_at, is_revoked FROM refresh_tokens WHERE token = ?")
+	row := database.DB.QueryRow(query, tokenString)
+
+	token := &types.RefreshToken{}
+	err := row.Scan(&token.ID, &token.UserID, &token.Token, &token.ExpiresAt, &token.IsRevoked)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Not found
+		}
+		return nil, err
+	}
+	return token, nil
+}
+
+// DeleteRefreshTokenByToken deletes a refresh token from the database by its token string.
+func DeleteRefreshTokenByToken(tokenString string) error {
+	query := database.Rebind("DELETE FROM refresh_tokens WHERE token = ?")
+	_, err := database.DB.Exec(query, tokenString)
+	return err
 }

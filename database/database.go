@@ -176,7 +176,7 @@ func createTables() {
 	case "sqlite3":
 		createTokenTableSQL = `CREATE TABLE IF NOT EXISTS auth_tokens (
 			"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-			"user_id" INTEGER NOT NULL,
+			"user_id" INTEGER NOT NULL UNIQUE,
 			"token" TEXT NOT NULL UNIQUE,
 			"expires_at" DATETIME NOT NULL,
 			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -184,14 +184,14 @@ func createTables() {
 	case "postgres":
 		createTokenTableSQL = `CREATE TABLE IF NOT EXISTS auth_tokens (
 			id SERIAL PRIMARY KEY,
-			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
 			token VARCHAR(255) NOT NULL UNIQUE,
 			expires_at TIMESTAMP WITH TIME ZONE NOT NULL
 		);`
 	case "mysql":
 		createTokenTableSQL = `CREATE TABLE IF NOT EXISTS auth_tokens (
 			id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-			user_id INT NOT NULL,
+			user_id INT NOT NULL UNIQUE,
 			token VARCHAR(255) NOT NULL UNIQUE,
 			expires_at DATETIME NOT NULL,
 			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -203,6 +203,44 @@ func createTables() {
 		os.Exit(1)
 	}
 	logging.AppLog.Info("Auth_tokens table verified successfully")
+
+	// Now, create the refresh_tokens table
+	var createRefreshTokenTableSQL string
+	switch dbType {
+	case "sqlite3":
+		createRefreshTokenTableSQL = `CREATE TABLE IF NOT EXISTS refresh_tokens (
+			"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+			"user_id" INTEGER NOT NULL UNIQUE,
+			"token" TEXT NOT NULL UNIQUE,
+			"expires_at" DATETIME NOT NULL,
+			"is_revoked" BOOLEAN NOT NULL DEFAULT FALSE,
+			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`
+	case "postgres":
+		createRefreshTokenTableSQL = `CREATE TABLE IF NOT EXISTS refresh_tokens (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+			token VARCHAR(255) NOT NULL UNIQUE,
+			expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			is_revoked BOOLEAN NOT NULL DEFAULT FALSE
+		);`
+	case "mysql":
+		createRefreshTokenTableSQL = `CREATE TABLE IF NOT EXISTS refresh_tokens (
+			id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL UNIQUE,
+			token VARCHAR(255) NOT NULL UNIQUE,
+			expires_at DATETIME NOT NULL,
+			is_revoked BOOLEAN NOT NULL DEFAULT FALSE,
+			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`
+	}
+
+	if _, err := DB.Exec(createRefreshTokenTableSQL); err != nil {
+		logging.AppLog.Error("Failed to create refresh_tokens table", "error", err, "db_type", dbType)
+		os.Exit(1)
+	}
+	logging.AppLog.Info("Refresh_tokens table verified successfully")
+
 }
 
 // Rebind converts a query with '_?_' placeholders to the database-specific format.
@@ -225,7 +263,9 @@ func Rebind(query string) string {
 // CloseDB closes the database connection.
 func CloseDB() {
 	if DB != nil {
-		DB.Close()
+		if err := DB.Close(); err != nil {
+			logging.AppLog.Error("Failed to close database connection", "error", err)
+		}
 		logging.AppLog.Info("Database connection closed")
 	}
 }

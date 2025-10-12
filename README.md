@@ -182,6 +182,42 @@ Your `DATABASE_URL` in the `.env` file would then be:
     - Once authenticated, you will be seamlessly proxied to the `TARGET_URL`.
     - You can access the admin dashboard at `http://localhost:8080/admin` (or your configured path).
 
+## Issuing API Tokens (Bearer Tokens)
+
+In addition to session-based authentication for web browsers, the proxy can issue JWT (JSON Web Tokens) for programmatic API access. These tokens can be used as Bearer Tokens in the `Authorization` header to authenticate requests to protected backend APIs.
+
+To obtain an access token and a refresh token, send a `POST` request to the `/api/auth/token` endpoint with the user's credentials in the JSON body.
+
+**Example using `curl`:**
+
+```sh
+curl -X POST -H "Content-Type: application/json" -d '{
+  "username": "your-username",
+  "password": "your-password"
+}' http://localhost:8080/api/auth/token
+```
+
+**Successful Response:**
+
+If the credentials are valid, the server will respond with a JSON object containing an `access_token` and a `refresh_token`.
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiYWRtaW4iLCJleHAiOjE2Njc4OTg5ODl9.abcdef123456...",
+  "refresh_token": "def456..."
+}
+```
+
+The `access_token` is a short-lived JWT that should be sent in the `Authorization` header for API requests:
+
+```
+Authorization: Bearer <access_token>
+```
+
+The `refresh_token` is a long-lived token that can be used to obtain a new access token once the old one expires. To do this, send a `POST` request to the `/auth/refresh` endpoint.
+
+**Note:** The token lifetimes (`ACCESS_TOKEN_DURATION_MINUTES`, `REFRESH_TOKEN_DURATION_DAYS`) can be configured in your `.env` file.
+
 ## Configuration Details
 
 | Environment Variable                      | Description                                                                                                                            | Default Value          |
