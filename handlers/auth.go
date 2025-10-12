@@ -4,8 +4,10 @@ import (
 	"auth-proxy/config"
 	"auth-proxy/logging"
 	"auth-proxy/models"
+	"auth-proxy/types"
 	"auth-proxy/utils"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"net/http"
 	"os"
@@ -16,6 +18,75 @@ import (
 )
 
 var templates = template.Must(template.ParseGlob("templates/*.html"))
+
+// authenticateUser handles the core logic for authenticating a user, including brute-force protection.
+// It returns the authenticated user or an error if authentication fails.
+func authenticateUser(username, password, ip string) (*types.User, error) {
+	user, err := models.GetUserByUsername(username)
+	if err != nil {
+		logging.AppLog.Error("Database error during authentication", "error", err, "username", username, "ip", ip)
+		return nil, errors.New("internal server error")
+	}
+
+	if user == nil {
+		logging.SecurityLog.Warn("AUTH FAIL", "username", username, "ip", ip, "reason", "user not found")
+		return nil, errors.New("invalid username or password")
+	}
+
+	// Step 1: Check if the account is locked.
+	if !user.IsActive {
+		lockoutMinutes, _ := strconv.Atoi(os.Getenv("LOCKOUT_DURATION_MINUTES"))
+		lockoutDuration := time.Duration(lockoutMinutes) * time.Minute
+
+		// Check if the lockout period has expired.
+		if time.Since(user.UpdatedAt) < lockoutDuration {
+			logging.SecurityLog.Warn("AUTH FAIL", "username", username, "ip", ip, "reason", "account locked")
+			return nil, errors.New("account is temporarily locked")
+		} else {
+			// Lockout has expired. Reactivate the account but do not log the user in on this attempt.
+			if err := models.SetUserActiveStatus(user.ID, true); err != nil {
+				logging.AppLog.Error("Failed to reactivate user", "error", err, "user_id", user.ID, "ip", ip)
+				return nil, errors.New("internal server error")
+			}
+			if err := models.RecordLoginSuccess(user.ID); err != nil {
+				logging.AppLog.Error("Failed to reset failed login attempts on reactivation", "error", err, "user_id", user.ID, "ip", ip)
+			}
+			logging.SecurityLog.Info("ACCOUNT UNLOCKED", "username", username, "ip", ip)
+			return nil, errors.New("account has been unlocked, please try again")
+		}
+	}
+
+	// Step 2: If the account is active, validate credentials.
+	if !models.CheckPasswordHash(password, user.PasswordHash) {
+		// Record the failure
+		if err := models.RecordLoginFailure(user.ID); err != nil {
+			logging.AppLog.Error("Failed to record login failure", "error", err, "user_id", user.ID, "ip", ip)
+		}
+
+		// Re-fetch user to get updated failed_logins count
+		updatedUser, _ := models.GetUserByID(user.ID)
+		maxAttempts, _ := strconv.Atoi(os.Getenv("MAX_LOGIN_ATTEMPTS"))
+
+		// Lock the account if max attempts are exceeded
+		if maxAttempts > 0 && updatedUser.FailedLogins >= maxAttempts {
+			if err := models.SetUserActiveStatus(user.ID, false); err != nil {
+				logging.AppLog.Error("Failed to lock account", "error", err, "user_id", user.ID, "ip", ip)
+			}
+			logging.SecurityLog.Warn("ACCOUNT LOCKED", "username", username, "ip", ip)
+		}
+
+		logging.SecurityLog.Warn("AUTH FAIL", "username", username, "ip", ip, "reason", "invalid credentials")
+		return nil, errors.New("invalid username or password")
+	}
+
+	// Step 3: Login successful.
+	if err := models.RecordLoginSuccess(user.ID); err != nil {
+		logging.AppLog.Error("Failed to record login success", "error", err, "user_id", user.ID, "ip", ip)
+	}
+	logging.SecurityLog.Info("AUTH SUCCESS", "username", user.Username, "ip", ip)
+
+	return user, nil
+}
 
 func renderLoginWithError(w http.ResponseWriter, r *http.Request, message string) {
 	data := map[string]interface{}{
@@ -55,69 +126,20 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 
-		user, err := models.GetUserByUsername(username)
+		user, err := authenticateUser(username, password, ip)
 		if err != nil {
-			logging.AppLog.Error("Database error during login", "error", err, "username", username, "ip", ip)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			if err := json.NewEncoder(w).Encode(map[string]string{"error": "An internal error occurred."}); err != nil {
-				logging.AppLog.Error("Failed to encode json error response", "error", err, "ip", ip)
+			// Map authentication error to user-facing message
+			errMsg := "Invalid username or password."
+			if err.Error() == "account is temporarily locked" {
+				errMsg = "Account is temporarily locked."
+			} else if err.Error() == "internal server error" {
+				errMsg = "An internal error occurred. Please try again."
 			}
+			renderLoginWithError(w, r, errMsg)
 			return
 		}
 
-		// Check for lockout and user status first
-		if user != nil {
-			lockoutMinutes, _ := strconv.Atoi(os.Getenv("LOCKOUT_DURATION_MINUTES"))
-
-			if !user.IsActive {
-				lockoutDuration := time.Duration(lockoutMinutes) * time.Minute
-				if time.Since(user.UpdatedAt) < lockoutDuration {
-					logging.SecurityLog.Warn("LOGIN FAIL", "username", username, "ip", ip, "reason", "account locked")
-					renderLoginWithError(w, r, "Account is temporarily locked.")
-					return
-				} else {
-					// If lockout expired, re-activate account and reset attempts
-					if err := models.SetUserActiveStatus(user.ID, true); err != nil {
-						logging.AppLog.Error("Failed to reactivate user", "error", err, "user_id", user.ID, "ip", ip)
-						renderLoginWithError(w, r, "An internal error occurred. Please try again.")
-						return
-					}
-					if err := models.RecordLoginSuccess(user.ID); err != nil {
-						logging.AppLog.Error("Failed to reset failed login attempts", "error", err, "user_id", user.ID, "ip", ip)
-						// Don't block login, but log the failure to reset attempts
-					}
-				}
-			}
-		}
-
-		// Validate user credentials
-		if user == nil || !models.CheckPasswordHash(password, user.PasswordHash) {
-			if user != nil {
-				if err := models.RecordLoginFailure(user.ID); err != nil {
-					logging.AppLog.Error("Failed to record login failure", "error", err, "user_id", user.ID, "ip", ip)
-				}
-				// Re-fetch user to get updated failed_logins count
-				updatedUser, _ := models.GetUserByID(user.ID)
-				maxAttempts, _ := strconv.Atoi(os.Getenv("MAX_LOGIN_ATTEMPTS"))
-				if updatedUser.FailedLogins >= maxAttempts {
-					if err := models.SetUserActiveStatus(user.ID, false); err != nil {
-						logging.AppLog.Error("Failed to lock account", "error", err, "user_id", user.ID, "ip", ip)
-					}
-					logging.SecurityLog.Warn("ACCOUNT LOCKED", "username", username, "ip", ip)
-				}
-			}
-			logging.SecurityLog.Warn("LOGIN FAIL", "username", username, "ip", ip, "reason", "invalid credentials")
-			renderLoginWithError(w, r, "Invalid username or password.")
-			return
-		}
-
-		// Login successful
-		if err := models.RecordLoginSuccess(user.ID); err != nil {
-			logging.AppLog.Error("Failed to record login success", "error", err, "user_id", user.ID, "ip", ip)
-		}
-		logging.SecurityLog.Info("LOGIN SUCCESS", "username", user.Username, "ip", ip)
-
+		// --- Create Session Cookie ---
 		tokenDurationHours, err := strconv.Atoi(os.Getenv("TOKEN_DURATION_HOURS"))
 		if err != nil || tokenDurationHours <= 0 {
 			tokenDurationHours = 24 // Default to 24 hours
@@ -127,11 +149,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		token, err := models.CreateAuthToken(user.ID, duration)
 		if err != nil {
 			logging.AppLog.Error("Failed to create auth token", "error", err, "username", user.Username, "ip", ip)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			if err := json.NewEncoder(w).Encode(map[string]string{"error": "Could not create session."}); err != nil {
-				logging.AppLog.Error("Failed to encode json error response", "error", err, "username", user.Username, "ip", ip)
-			}
+			renderLoginWithError(w, r, "Could not create session.")
 			return
 		}
 
@@ -365,23 +383,13 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// --- User Authentication Logic (similar to LoginHandler) ---
-	user, err := models.GetUserByUsername(creds.Username)
+	// Use the shared authentication logic
+	user, err := authenticateUser(creds.Username, creds.Password, ip)
 	if err != nil {
-		logging.AppLog.Error("Database error during token issuance", "error", err, "username", creds.Username, "ip", ip)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		// Return a generic error to the API client
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
-
-	// NOTE: We are not performing lockout checks here for simplicity,
-	// but in a production system, you'd want to protect this endpoint
-	// against brute-force attacks as well.
-	if user == nil || !user.IsActive || !models.CheckPasswordHash(creds.Password, user.PasswordHash) {
-		logging.SecurityLog.Warn("TOKEN ISSUANCE FAIL", "username", creds.Username, "ip", ip, "reason", "invalid credentials or inactive user")
-		http.Error(w, "Unauthorized: Invalid credentials", http.StatusUnauthorized)
-		return
-	}
-	// --- End Authentication ---
 
 	// --- Issue Tokens ---
 	// Access Token
@@ -408,8 +416,6 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// --- End Issue Tokens ---
-
-	logging.SecurityLog.Info("TOKEN ISSUANCE SUCCESS", "username", user.Username, "ip", ip)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
