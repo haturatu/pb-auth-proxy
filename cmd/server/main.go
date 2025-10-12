@@ -46,16 +46,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- Create router and define routes ---
-	mux := http.NewServeMux()
+	// --- Create routers: one for CSRF-protected routes, one for non-protected ---
+	csrfMux := http.NewServeMux()
+	mainMux := http.NewServeMux()
 
-	// --- Static file serving ---
+	// --- Static file serving (non-protected) ---
 	assetsPath := strings.TrimRight(config.Paths.Assets, "/") + "/"
 	assetsFS := http.FileServer(http.Dir("templates"))
-	mux.Handle(assetsPath, http.StripPrefix(assetsPath, assetsFS))
+	mainMux.Handle(assetsPath, http.StripPrefix(assetsPath, assetsFS))
 
-	// --- Frontend selection and routing ---
-	frontendType := os.Getenv("FRONTEND_TYPE")
+	// --- Rate Limiter ---
 	rateLimiter := middleware.NewRateLimiter()
 
 	// Helper to switch handler based on HTTP method
@@ -69,66 +69,79 @@ func main() {
 		})
 	}
 
+	// --- Route configuration based on frontend type ---
+	frontendType := os.Getenv("FRONTEND_TYPE")
 	if frontendType == "php" {
-		// Create specific handlers for each PHP page
+		// --- PHP Frontend Routes ---
 		loginPageHandler := handlers.NewPhpProxyHandler("login.php")
 		registerPageHandler := handlers.NewPhpProxyHandler("register.php")
 		accountPageHandler := handlers.NewPhpProxyHandler("account.php")
 		accountPasswordPageHandler := handlers.NewPhpProxyHandler("account_password.php")
 
-		// For /login, GET goes to PHP, POST goes to Go's login logic
-		loginHandler := methodSwitch(loginPageHandler, http.HandlerFunc(handlers.LoginHandler))
-		mux.Handle(config.Paths.Login, loginHandler)
+		// POST actions go to csrfMux, GET pages go to mainMux
+		csrfMux.HandleFunc(config.Paths.Login, handlers.LoginHandler)
+		mainMux.Handle(config.Paths.Login, loginPageHandler)
 
 		if config.Paths.RegisterEnabled {
-			// For /register, GET goes to PHP, POST goes to Go's register logic
 			registerPostHandler := middleware.RateLimitMiddleware(rateLimiter)(http.HandlerFunc(handlers.RegisterHandler))
-			registerHandler := methodSwitch(registerPageHandler, registerPostHandler)
-			mux.Handle(config.Paths.Register, registerHandler)
+			csrfMux.Handle(config.Paths.Register, registerPostHandler)
+			mainMux.Handle(config.Paths.Register, registerPageHandler)
 		}
 
-		// For account pages, GET goes to PHP, POST (for password change) goes to Go
 		accountPasswordPostHandler := http.HandlerFunc(handlers.ChangePasswordHandler)
-		accountPasswordHandler := methodSwitch(accountPasswordPageHandler, accountPasswordPostHandler)
-		mux.Handle(config.Paths.AccountPassword, middleware.SessionAuth(accountPasswordHandler))
-		mux.Handle(config.Paths.Account, middleware.SessionAuth(accountPageHandler)) // This page is GET only
+		csrfMux.Handle(config.Paths.AccountPassword, middleware.SessionAuth(accountPasswordPostHandler))
+		mainMux.Handle(config.Paths.AccountPassword, middleware.SessionAuth(accountPasswordPageHandler)) // GET is the same page
 
-		// Admin page still uses Go templates
-		mux.Handle(config.Paths.Admin, middleware.SessionAuth(middleware.AdminMiddleware(http.HandlerFunc(handlers.AdminPageHandler))))
+		mainMux.Handle(config.Paths.Account, middleware.SessionAuth(accountPageHandler))
+		csrfMux.Handle(config.Paths.Admin, middleware.SessionAuth(middleware.AdminMiddleware(http.HandlerFunc(handlers.AdminPageHandler))))
+		mainMux.Handle(config.Paths.Admin, middleware.SessionAuth(middleware.AdminMiddleware(http.HandlerFunc(handlers.AdminPageHandler))))
+
 	} else {
-		// --- Public Auth Routes (Go templates) ---
-		mux.HandleFunc(config.Paths.Login, handlers.LoginHandler)
+		// --- Go Template Frontend Routes ---
+		// POST actions go to csrfMux, GET pages go to mainMux
+		csrfMux.HandleFunc(config.Paths.Login, handlers.LoginHandler)
+		mainMux.HandleFunc(config.Paths.Login, handlers.LoginHandler) // Handles GET
+
 		if config.Paths.RegisterEnabled {
-			mux.Handle(config.Paths.Register, middleware.RateLimitMiddleware(rateLimiter)(http.HandlerFunc(handlers.RegisterHandler)))
+			registerHandler := middleware.RateLimitMiddleware(rateLimiter)(http.HandlerFunc(handlers.RegisterHandler))
+			csrfMux.Handle(config.Paths.Register, registerHandler)
+			mainMux.Handle(config.Paths.Register, registerHandler) // Handles GET
 		}
-		// --- Auth HTML pages (Protected by SessionAuth, Go templates) ---
-		mux.Handle(config.Paths.Account, middleware.SessionAuth(http.HandlerFunc(handlers.AccountPageHandler)))
-		mux.Handle(config.Paths.Admin, middleware.SessionAuth(middleware.AdminMiddleware(http.HandlerFunc(handlers.AdminPageHandler))))
-		mux.Handle(config.Paths.AccountPassword, middleware.SessionAuth(http.HandlerFunc(handlers.ChangePasswordHandler)))
+
+		// Protected pages
+		accountHandler := http.HandlerFunc(handlers.AccountPageHandler)
+		adminHandler := middleware.AdminMiddleware(http.HandlerFunc(handlers.AdminPageHandler))
+		passwordHandler := http.HandlerFunc(handlers.ChangePasswordHandler)
+
+		mainMux.Handle(config.Paths.Account, middleware.SessionAuth(accountHandler))
+		csrfMux.Handle(config.Paths.Account, middleware.SessionAuth(accountHandler))
+
+		mainMux.Handle(config.Paths.Admin, middleware.SessionAuth(adminHandler))
+		csrfMux.Handle(config.Paths.Admin, middleware.SessionAuth(adminHandler))
+
+		mainMux.Handle(config.Paths.AccountPassword, middleware.SessionAuth(passwordHandler))
+		csrfMux.Handle(config.Paths.AccountPassword, middleware.SessionAuth(passwordHandler))
 	}
 
-	// --- Common Routes ---
-	mux.HandleFunc(config.Paths.Logout, handlers.LogoutHandler)
-	mux.HandleFunc("/auth/refresh", handlers.RefreshTokenHandler)
-	mux.HandleFunc("/api/auth/token", handlers.TokenHandler)
+	// --- Common Routes (non-CSRF) ---
+	mainMux.HandleFunc(config.Paths.Logout, handlers.LogoutHandler)
+	mainMux.HandleFunc("/auth/refresh", handlers.RefreshTokenHandler)
+	mainMux.HandleFunc("/api/auth/token", handlers.TokenHandler)
 
-	// --- Protected API Endpoints (for Admin UI, protected by SessionAuth) ---
+	// --- Protected API Endpoints (for Admin UI, protected by Bearer/Session, CSRF applied) ---
 	adminCreateUserAPI := http.HandlerFunc(handlers.CreateUserHandler)
 	getUsersHandler := http.HandlerFunc(handlers.GetUsersHandler)
-	adminUsersAPI := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			adminCreateUserAPI.ServeHTTP(w, r)
-		} else {
-			getUsersHandler.ServeHTTP(w, r)
-		}
-	})
+	adminUsersAPI := methodSwitch(getUsersHandler, adminCreateUserAPI) // GET and POST
 
 	adminUpdateRoleAPI := http.HandlerFunc(handlers.UpdateUserRoleHandler)
 	adminDeleteUserAPI := http.HandlerFunc(handlers.DeleteUserHandler)
 	adminSetStatusAPI := http.HandlerFunc(handlers.SetUserActiveStatusHandler)
 
-	mux.Handle(config.Paths.AdminUsersAPI, middleware.BearerAuth(middleware.AdminMiddleware(adminUsersAPI)))
-	mux.Handle(config.Paths.AdminUsersAPI+"/", middleware.BearerAuth(middleware.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Apply CSRF protection to state-changing admin API endpoints
+	csrfMux.Handle(config.Paths.AdminUsersAPI, middleware.BearerAuth(middleware.AdminMiddleware(adminUsersAPI)))
+	mainMux.Handle(config.Paths.AdminUsersAPI, middleware.BearerAuth(middleware.AdminMiddleware(getUsersHandler))) // GET is safe
+
+	csrfMux.Handle(config.Paths.AdminUsersAPI+"/", middleware.BearerAuth(middleware.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
 		case strings.HasSuffix(path, "/role") && r.Method == http.MethodPost:
@@ -142,72 +155,67 @@ func main() {
 		}
 	}))))
 
-	// --- Main Application Proxy ---
+	// --- Main Application Proxy (not CSRF protected) ---
 	proxyHandler := handlers.NewProxy(targetURL)
 
-	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, pattern := mux.Handler(r)
-		if pattern != "" {
-			mux.ServeHTTP(w, r)
-			return
-		}
-
-		path := r.URL.Path
-
-		// API Protection with Bearer Token
-		if config.Paths.ProtectAPI && strings.HasPrefix(path, config.Paths.APIPath) {
-			middleware.BearerAuth(proxyHandler).ServeHTTP(w, r)
-			return
-		}
-
-		// Frontend Protection with Session Cookie
-		if config.Paths.ProtectFrontend {
-			middleware.SessionAuth(proxyHandler).ServeHTTP(w, r)
-			return
-		}
-
-		// No protection
-		proxyHandler.ServeHTTP(w, r)
-	})
-
-	// Get server port
-	port := os.Getenv("LISTEN_PORT")
-	if port == "" {
-		port = "8080"
-	}
-	listenAddr := ":" + port
-
-	// --- CSRF Protection ---
+	// --- CSRF Middleware Configuration ---
 	csrfSecret := os.Getenv("CSRF_SECRET_KEY")
 	if csrfSecret == "" {
 		logging.AppLog.Error("CSRF_SECRET_KEY environment variable not set")
 		os.Exit(1)
 	}
-	// In production, you should set csrf.Secure(true).
-	// You can use an environment variable to control this setting.
 	csrfOptions := []csrf.Option{
-		csrf.Secure(true), // Set to true in production
+		csrf.Secure(os.Getenv("ENV") == "production"),
 		csrf.Path("/"),
+		csrf.HttpOnly(true),
 	}
-
 	trustedOrigins := os.Getenv("CSRF_TRUSTED_ORIGINS")
 	if trustedOrigins != "" {
 		origins := strings.Split(trustedOrigins, ",")
 		csrfOptions = append(csrfOptions, csrf.TrustedOrigins(origins))
 	}
+	csrfMiddleware := csrf.Protect([]byte(csrfSecret), csrfOptions...)
+	csrfProtectedHandler := csrfMiddleware(csrfMux)
 
-	csrfMiddleware := csrf.Protect(
-		[]byte(csrfSecret),
-		csrfOptions...,
-	)
+	// --- Final Handler: Delegates to CSRF mux, main mux, or proxy ---
+	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check CSRF-protected routes first
+		_, csrfPattern := csrfMux.Handler(r)
+		if csrfPattern != "" {
+			csrfProtectedHandler.ServeHTTP(w, r)
+			return
+		}
+
+		// Check non-CSRF routes next
+		_, mainPattern := mainMux.Handler(r)
+		if mainPattern != "" {
+			mainMux.ServeHTTP(w, r)
+			return
+		}
+
+		// Fallback to the proxy
+		path := r.URL.Path
+		if config.Paths.ProtectAPI && strings.HasPrefix(path, config.Paths.APIPath) {
+			middleware.BearerAuth(proxyHandler).ServeHTTP(w, r)
+		} else if config.Paths.ProtectFrontend {
+			middleware.SessionAuth(proxyHandler).ServeHTTP(w, r)
+		} else {
+			proxyHandler.ServeHTTP(w, r)
+		}
+	})
 
 	// --- Start Server ---
+	port := os.Getenv("LISTEN_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	listenAddr := ":" + port
 	logging.AppLog.Info("Server starting on " + listenAddr)
 
 	// Start periodic background tasks
 	go startBackgroundTasks(pool, rateLimiter)
 
-	if err := http.ListenAndServe(listenAddr, csrfMiddleware(finalHandler)); err != nil {
+	if err := http.ListenAndServe(listenAddr, finalHandler); err != nil {
 		logging.AppLog.Error("Server failed to start", "error", err)
 		os.Exit(1)
 	}
