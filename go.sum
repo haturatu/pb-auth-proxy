@@ -8,5 +8,7 @@ github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
 github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
 github.com/mattn/go-sqlite3 v1.14.32 h1:JD12Ag3oLy1zQA+BNn74xRgaBbdhbNIDYvQUEuuErjs=
 github.com/mattn/go-sqlite3 v1.14.32/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
+github.com/tomasen/fcgi_client v0.0.0-20180423082037-2bb3d819fd19 h1:ZCmSnT6CLGhfoQ2lPEhL4nsJstKDCw1F1RfN8/smTCU=
+github.com/tomasen/fcgi_client v0.0.0-20180423082037-2bb3d819fd19/go.mod h1:SXTY+QvI+KTTKXQdg0zZ7nx0u94QWh8ZAwBQYsW9cqk=
 golang.org/x/crypto v0.43.0 h1:dduJYIi3A3KOfdGOHX8AVZ/jGiyPa3IbBozJ5kNuE04=
 golang.org/x/crypto v0.43.0/go.mod h1:BFbav4mRNlXJL4wNeejLpWxB7wMbc79PdRGhWKncxR0=

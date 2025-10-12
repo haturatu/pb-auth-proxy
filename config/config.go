@@ -42,7 +42,7 @@ func Init() {
 		AccountPassword: getEnv("AUTH_PATH_ACCOUNT_PASSWORD", "/account/password"),
 		Admin:           getEnv("AUTH_PATH_ADMIN", "/admin"),
 		AdminUsersAPI:   getEnv("AUTH_PATH_ADMIN_USERS_API", "/api/admin/users"),
-		Assets:          getEnv("AUTH_ASSETS_PATH", "/auth-proxy-assets"),
+		Assets:          getEnv("AUTH_ASSETS_PATH", "/assets"),
 		ProtectFrontend: getEnvAsBool("PROTECT_FRONTEND", false),
 		ProtectAPI:      getEnvAsBool("PROTECT_API", false),
 		FrontPath:       getEnv("FRONT_PATH", "/"),

@@ -1,0 +1,347 @@
+# Auth Proxy (認証プロキシ)
+
+これはGoで書かれたシンプルな認証リバースプロキシです。あらゆるバックエンドウェブサービスの前に配置できる、柔軟な認証レイヤーを提供します。
+
+ユーザー登録、ログイン、セッション管理を処理し、認証されたリクエストを設定済みのバックエンドにプロキシします。また、ユーザー管理のための管理ダッシュボードも含まれています。
+
+## 主な機能
+
+- **認証**: ログイン、ログアウト、登録ページを提供します。
+- **リバースプロキシ**: 認証されたユーザーをバックエンドサービスにプロキシします。
+- **管理ダッシュボード**: ユーザーを管理（ロールの更新、有効化/無効化、削除）するためのシンプルなUI。
+- **柔軟なデータベースサポート**: PostgreSQL, MySQL, SQLiteに対応。
+- **プラグイン可能なフロントエンド**: 複数のフロントエンドモード（JS駆動またはPHP）をサポート。
+- **セキュリティ強化**:
+    - **ブルートフォース攻撃からの保護**: 設定可能な回数ログインに失敗したユーザーアカウントをロックします。
+    - **ユーザー作成レート制限**: 同一IPアドレスから短時間に多くのユーザーが作成されるのを防ぎます。
+    - **設定可能なパスワードポリシー**: パスワードの強度要件を強制します。詳細は下記を参照。
+    - **セキュアなセッションクッキー**: セッション管理に `HttpOnly` のセキュアなクッキーを使用します。
+- **高い設定可能性**: データベース接続、セキュリティポリシー、内部URLパスなど、ほぼ全ての側面を `.env` ファイルで設定可能です。
+- **構造化ロギング**: `slog` を使用した詳細なアプリケーションログとセキュリティログ。
+- **管理者作成用CLI**: 初期管理者ユーザーを簡単に作成するためのコマンドラインツール。
+
+## セキュリティと認証の詳細
+
+### パスワードの暗号化
+
+ユーザーのパスワードは、平文（プレーンテキスト）では一切保存されません。パスワード専用に設計された強力で適応性のあるハッシュ関数である **bcrypt** アルゴリズムを使用して、安全にハッシュ化されます。ユーザーがログインする際、入力されたパスワードはハッシュ化され、保存されているハッシュ値と比較されます。これにより、万が一データベースが侵害された場合でも、元のパスワードが漏洩するのを防ぎます。
+
+### 認証フロー
+
+このプロキシは、異なるユースケースに対応するため、2つの主要な認証フローをサポートしています。
+
+#### 1. Web UI（セッションベース）
+
+このフローは、Webブラウザを介してアプリケーションを操作するユーザー向けに設計されています。
+
+1.  ユーザーがログインページからユーザー名とパスワードを送信します。
+2.  サーバーは、データベース内の情報と照合して認証情報を検証します。
+3.  成功すると、暗号学的に安全なランダムトークンが生成され、ユーザーに関連付けられてデータベースに保存されます。
+4.  このトークンは、`auth_token` という名前の安全な `HttpOnly` クッキーとしてユーザーのブラウザに送信され、セッションが確立されます。
+
+#### 2. API（JWTベース）
+
+このフローは、プログラムによるクライアントやサービス向けに設計されています。
+
+1.  クライアントが、ユーザーのユーザー名とパスワードを含む`POST`リクエストを`/api/auth/token`エンドポイントに送信します。
+2.  サーバーは認証情報を検証します。
+3.  成功すると、2種類のトークンを生成して返します。
+    *   ユーザー情報（ID、ロール）と有効期限を含む、短命の**JWTアクセストークン**。このトークンは改ざんを防ぐために署名されています。
+    *   新しいアクセストークンを取得するために使用できる、長命の**リフレッシュトークン**。これはデータベースに保存されます。
+
+### セッション管理
+
+#### Web UIセッション
+
+ブラウザからの後続のリクエストでは、`auth_token`クッキーが自動的にサーバーに送信されます。ミドルウェアがこのトークンをデータベースで検索して検証します。トークンが有効で期限切れでなければ、リクエストは認証され、処理が続行されます。ユーザーがログアウトすると、セッショントークンはデータベースから削除され、セッションが無効になります。
+
+#### APIセッション（JWTによるステートレス管理）
+
+APIリクエストの場合、クライアントは`Authorization: Bearer <token>`ヘッダーにJWTアクセストークンを含める必要があります。サーバー上のミドルウェアが、トークンの署名と有効期限を検証します。このプロセスはステートレスであり、リクエストごとにデータベースを検索する必要がないため、非常に効率的です。アクセストークンが期限切れになった場合、クライアントはリフレッシュトークンを使用して、再認証することなく新しいアクセストークンを要求できます。
+
+**認証の優先順位に関する注意:** APIエンドポイントが保護されている場合（`PROTECT_API=true`）、ミドルウェアはまず`Authorization: Bearer`ヘッダーを探します。このヘッダーが存在しない場合、フォールバックとして`auth_token`セッションクッキーの検証を試みます。これにより、Web UIにログインしているユーザーは、ブラウザセッションを使用してAPIに対しても認証できます。しかし、これはAPIエンドポイントが有効なJWTまたは有効なセッションクッキーのいずれかによってアクセス可能であることを意味します。
+
+## はじめに
+
+### 前提条件
+
+- Go 1.21 以降
+- (任意) PHPフロントエンドを使用する場合は、実行中のPHP-FPMサービス。
+- (任意) PostgreSQL または MySQL データベースサーバー。
+
+### インストール
+
+1.  **リポジトリをクローン:**
+    ```sh
+    git clone <repository-url>
+    cd auth-proxy
+    ```
+
+2.  **依存関係をインストール:**
+    ```sh
+    go mod tidy
+    ```
+
+3.  **バイナリをビルド:**
+    ```sh
+    go build -o auth-proxy-server ./cmd/server && go build -o admin-cli ./cmd/admin-cli
+    ```
+
+### 設定
+
+設定はプロジェクトのルートにある `.env` ファイルで管理されます。`.env` という名前のファイルを作成し、必要な変数を追加してください。
+
+**`.env` ファイルの例:**
+
+```dotenv
+# --- 必須 ---
+# 保護したいバックエンドサービスのURL
+TARGET_URL=http://localhost:8081
+
+# セッションクッキーとJWTを保護するための長くてランダムな文字列
+# 本番環境では、openssl rand -base64 45 を使って新しいキーを生成してください
+SESSION_SECRET=my-super-secret-key
+
+# --- データベース ---
+# 以下のいずれかのオプションを使用してください:
+
+# オプション1: PostgreSQL または MySQL (推奨)
+# 例: postgres://user:password@host:port/dbname?sslmode=disable
+# 例: mysql://user:password@tcp(host:port)/dbname?charset=utf8mb4&parseTime=true
+DATABASE_URL=mysql://test:test@127.0.0.1:3306/auth
+
+# オプション2: SQLite (DATABASE_URLが設定されていない場合のデフォルト)
+# DATABASE_PATH=./auth.db
+
+# --- フロントエンド & プロキシ ---
+# フロントエンドモード: "js" (デフォルト) または "php"
+FRONTEND_TYPE=js
+# trueの場合、フロントエンドパスをセッション認証で保護します
+PROTECT_FRONTEND=false
+# trueの場合、APIパスをベアラートークン認証で保護します
+PROTECT_API=false
+# 保護対象のフロントエンドのベースパス
+FRONT_PATH=/
+# 保護対象のAPIのベースパス
+API_PATH=/api/
+
+# --- セキュリティポリシー ---
+
+# ブルートフォース攻撃からの保護設定
+MAX_LOGIN_ATTEMPTS=5
+LOCKOUT_DURATION_MINUTES=10
+
+# ユーザー作成レート制限設定
+USER_CREATION_RATE_LIMIT_MAX_REQUESTS=5
+USER_CREATION_RATE_LIMIT_WINDOW_SECONDS=3600
+
+# パスワードポリシー (none, standard, enhanced, strict)
+PASSWORD_POLICY=standard
+
+# --- トークン有効期間 ---
+# Webセッションクッキーの有効期間
+TOKEN_DURATION_HOURS=24
+# API JWTアクセストークンの有効期間
+ACCESS_TOKEN_DURATION_MINUTES=15
+# API JWTリフレッシュトークンの有効期間
+REFRESH_TOKEN_DURATION_DAYS=7
+
+# --- 任意: パスのオーバーライド ---
+# バックエンドアプリケーションとのURL競合を避けるためにコメントを解除して変更してください。
+# AUTH_PATH_LOGIN=/login
+# AUTH_PATH_REGISTER=/register
+# AUTH_PATH_LOGOUT=/logout
+# AUTH_PATH_ACCOUNT=/account
+# AUTH_PATH_ACCOUNT_PASSWORD=/account/password
+# AUTH_PATH_ADMIN=/admin
+# AUTH_PATH_ADMIN_USERS_API=/api/admin/users
+# AUTH_ASSETS_PATH=/assets
+```
+
+### フロントエンドの選択
+
+`FRONTEND_TYPE` 環境変数を使用して、2つのフロントエンドモードから選択できます。
+
+-   **`js` (または空)**: これがデフォルトモードです。サーバーは基本的なHTMLテンプレートを描画し、すべての認証ロジック（フォームの描画、ユーザー入力の処理など）は、GoバックエンドのAPIエンドポイントと通信するフロントエンドのJavaScriptコードによって管理されることが想定されています。
+-   **`php`**: PHPベースのビューを使用するには、実行中のPHP-FPMサービスが必要です。このモードは、認証ページのGETリクエストをPHP-FPMサービスにプロキシし、POSTリクエスト（ログイン送信など）はGoバックエンドで処理します。
+
+#### PHPフロントエンドのセットアップ
+
+`FRONTEND_TYPE=php` を選択した場合は、以下の手順に従ってください。
+
+1.  **`.env`でフロントエンドタイプを設定**:
+    ```dotenv
+    FRONTEND_TYPE=php
+    ```
+
+2.  **`.env`でPHP-FPM接続を設定**:
+    PHP-FPMソケットへのパスとドキュメントルートを提供する必要があります。
+    -   `PHP_FPM_SOCKET`: PHP-FPMソケットファイルへのパス（例: `/run/php-fpm/php-fpm.sock`）。
+    -   `PHP_DOC_ROOT`: PHPビューファイル（例: `login.php`）を含むディレクトリへの**絶対パス**。このパスは、*PHP-FPMプロセスからアクセス可能*である必要があります。
+
+3.  **PHPファイルのコピーと権限設定**:
+    PHP-FPMサービスを実行するユーザーは、PHPテンプレートファイルへの読み取りアクセス権が必要です。
+
+    まず、PHP-FPMの実行ユーザーを特定します。これは、PHP-FPMプール設定ファイル（例: `/etc/php/8.3/fpm/pool.d/www.conf`）で確認するか、実行中のプロセスを調べることで確認できます。
+    ```sh
+    # PHP-FPMユーザーを見つけるためのコマンド例
+    ps aux | grep php-fpm
+    ```
+    一般的なユーザーは `www-data`、`http`、`apache` です。
+
+    次に、`templates/php` ディレクトリをPHP-FPMがアクセス可能な場所（例: `/var/www/html/auth-proxy`）にコピーし、正しい所有権を設定します。
+
+    ```sh
+    # セットアップ例（ユーザーが 'http' の場合）
+    sudo cp -r templates/php /var/www/html/auth-proxy/php
+    sudo chown -R http:http /var/www/html/auth-proxy
+    ```
+
+    最後に、`.env` ファイルを正しいパスで更新します。
+    ```dotenv
+    # --- PHP Frontend Settings ---
+    FRONTEND_TYPE=php
+    PHP_FPM_SOCKET=/run/php-fpm/php-fpm.sock
+    PHP_DOC_ROOT=/var/www/html/auth-proxy/php
+    ```
+
+### データベース設定例
+
+PostgreSQLまたはMySQLを使用している場合は、プロキシ用のデータベースとユーザーを作成する必要があります。
+
+#### PostgreSQL
+
+`psql` で以下のコマンドを実行します:
+
+```sql
+-- 専用データベースを作成
+CREATE DATABASE auth_proxy;
+
+-- 専用ユーザーを作成
+CREATE USER auth_user WITH PASSWORD 'your_strong_password';
+
+-- ユーザーにデータベースの全権限を付与
+GRANT ALL PRIVILEGES ON DATABASE auth_proxy TO auth_user;
+```
+
+その場合、`.env` ファイルの `DATABASE_URL` は次のようになります:
+`DATABASE_URL=postgres://auth_user:your_strong_password@localhost:5432/auth_proxy?sslmode=disable`
+
+#### MySQL / MariaDB
+
+MySQLクライアントで以下のコマンドを実行します:
+
+```sql
+-- 専用データベースを作成
+CREATE DATABASE auth_proxy CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- 専用ユーザーを作成
+CREATE USER 'auth_user'@'localhost' IDENTIFIED BY 'your_strong_password';
+
+-- ユーザーにデータベースの全権限を付与
+GRANT ALL PRIVILEGES ON auth_proxy.* TO 'auth_user'@'localhost';
+
+-- 変更を適用
+FLUSH PRIVILEGES;
+```
+
+その場合、`.env` ファイルの `DATABASE_URL` は次のようになります:
+`DATABASE_URL=mysql://auth_user:your_strong_password@tcp(127.0.0.1:3306)/auth_proxy?parseTime=true`
+
+## 使い方
+
+1.  **管理者ユーザーの作成**:
+
+    サーバーを起動する前に、`admin-cli` ツールを使用して最初の管理者ユーザーを作成します。CLIはデータベース接続に `.env` ファイルを使用するため、正しく設定されていることを確認してください。
+
+    `--username` と `--password` フラグは必須です。
+
+    *成功時のコマンド:*
+    ```sh
+    ./admin-cli --username <your-admin-username> --password <your-strong-password>
+    ```
+
+    *フラグが不足している場合の例:*
+    ```sh
+    $ ./admin-cli
+    time=2025-10-12T04:28:09.014+09:00 level=ERROR msg="Both --username and --password flags are required"
+    ```
+
+2.  **プロキシサーバーの実行**:
+
+    ```sh
+    ./auth-proxy-server
+    ```
+
+    サーバーはデフォルトでポート `:8080` で起動します。
+
+3.  **アプリケーションへのアクセス**:
+
+    -   ブラウザを開き、`http://localhost:8080` にアクセスします。
+    -   ログインページにリダイレクトされます。
+    -   作成した管理者認証情報でログインします。
+    -   認証されると、`TARGET_URL` にシームレスにプロキシされます。
+    -   管理ダッシュボードには `http://localhost:8080/admin` （または設定したパス）でアクセスできます。
+
+## APIトークン（ベアラートークン）の発行
+
+Webブラウザ向けのセッションベースの認証に加えて、プロキシはプログラムによるAPIアクセスのためにJWT（JSON Web Token）を発行できます。これらのトークンは、保護されたバックエンドAPIへのリクエストを認証するために、`Authorization` ヘッダーでベアラートークンとして使用できます。
+
+アクセストークンとリフレッシュトークンを取得するには、`/api/auth/token` エンドポイントに、JSONボディにユーザーの認証情報を入れて `POST` リクエストを送信します。
+
+**`curl` を使用した例:**
+
+```sh
+curl -X POST -H "Content-Type: application/json" -d '{
+  "username": "your-username",
+  "password": "your-password"
+}' http://localhost:8080/api/auth/token
+```
+
+**成功時のレスポンス:**
+
+認証情報が有効な場合、サーバーは `access_token` と `refresh_token` を含むJSONオブジェクトで応答します。
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJyb2xlIjoiYWRtaW4iLCJleHAiOjE2Njc4OTg5ODl9.abcdef123456...",
+  "refresh_token": "def456..."
+}
+```
+
+`access_token` は短命のJWTであり、APIリクエストの `Authorization` ヘッダーで送信する必要があります:
+
+```
+Authorization: Bearer <access_token>
+```
+
+`refresh_token` は長命のトークンで、古いアクセストークンが期限切れになったときに新しいアクセストークンを取得するために使用できます。これを行うには、`/auth/refresh` エンドポイントに `POST` リクエストを送信します。
+
+**注意:** トークンの有効期間は `.env` ファイルで設定できます。詳細は設定表を参照してください。
+
+## 設定詳細
+
+| 環境変数 | 説明 | デフォルト値 |
+| --- | --- | --- |
+| `TARGET_URL` | **(必須)** プロキシ先のバックエンドサービスのURL。 | - |
+| `SESSION_SECRET` | **(必須)** セッションクッキーの暗号化とJWTの署名に使用する、長くてランダムな秘密鍵。 | `default-secret-key-for-dev` |
+| `DATABASE_URL` | PostgreSQLまたはMySQLの接続文字列。設定されている場合、`DATABASE_PATH`より優先されます。 | - |
+| `DATABASE_PATH` | SQLiteデータベースのファイルパス。`DATABASE_URL`が設定されていない場合のみ使用されます。 | `./auth.db` |
+| `LOG_LEVEL` | ログレベルを設定します。`DEBUG`, `INFO`, `WARN`, `ERROR`が指定できます。 | `INFO` |
+| `FRONTEND_TYPE` | フロントエンドのレンダリングモードを切り替えます。`js`または`php`が指定できます。 | `js` |
+| `PHP_FPM_SOCKET` | PHP-FPMソケットへのファイルパス。`FRONTEND_TYPE`が`php`の場合のみ使用されます。 | `/run/php-fpm/php-fpm.sock` |
+| `PHP_DOC_ROOT` | PHPファイルディレクトリへの絶対パス。`FRONTEND_TYPE`が`php`の場合のみ使用されます。 | - |
+| `MAX_LOGIN_ATTEMPTS` | アカウントがロックされるまでのログイン失敗回数。 | `5` |
+| `LOCKOUT_DURATION_MINUTES` | アカウントがロックされている期間（分）。 | `10` |
+| `USER_CREATION_RATE_LIMIT_MAX_REQUESTS` | 時間枠内に単一IPから許可されるユーザー登録の最大数。 | `5` |
+| `USER_CREATION_RATE_LIMIT_WINDOW_SECONDS` | ユーザー作成レート制限の時間枠（秒）。 | `3600` (1時間) |
+| `PASSWORD_POLICY` | パスワード強度要件を設定します (`none`, `standard`, `enhanced`, `strict`)。 | `standard` |
+| `TOKEN_DURATION_HOURS` | Webセッションクッキーの有効期間（時間）。 | `24` |
+| `ACCESS_TOKEN_DURATION_MINUTES` | APIクライアント用のJWTアクセストークンの有効期間（分）。 | `15` |
+| `REFRESH_TOKEN_DURATION_DAYS` | APIクライアント用のJWTリフレッシュトークンの有効期間（日）。 | `7` |
+| `PROTECT_FRONTEND` | `true`の場合、すべてのフロントエンドパスをセッション認証経由でプロキシします。 | `false` |
+| `PROTECT_API` | `true`の場合、すべてのAPIパスをベアラートークン認証経由でプロキシします。 | `false` |
+| `FRONT_PATH` | `PROTECT_FRONTEND`で保護されるフロントエンドのベースパス。 | `/` |
+| `API_PATH` | `PROTECT_API`で保護されるAPIルートのベースパス。 | `/api/` |
+| `AUTH_PATH_*` | ログイン、管理者ページなどの内部URLをカスタマイズするための変数セット。 | 様々、例: `/login`|
+| `AUTH_ASSETS_PATH` | 内部静的アセット（CSS, JS）を提供するためのURLパス。 | `/assets` |

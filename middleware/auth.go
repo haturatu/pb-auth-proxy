@@ -52,7 +52,10 @@ func SessionAuth(next http.Handler) http.Handler {
 			return
 		}
 
+		// Add user info to context and headers for downstream handlers
 		ctx := context.WithValue(r.Context(), types.SessionDataContextKey, user)
+		r.Header.Set("X-Username", user.Username)
+		r.Header.Set("X-User-Role", user.Role)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

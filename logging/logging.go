@@ -20,13 +20,18 @@ func InitLoggers() {
 	appWriter := os.Stdout
 	securityWriter := os.Stdout
 
+	logLevel := slog.LevelInfo
+	if strings.ToUpper(os.Getenv("LOG_LEVEL")) == "DEBUG" {
+		logLevel = slog.LevelDebug
+	}
+
 	AppLog = slog.New(slog.NewTextHandler(appWriter, &slog.HandlerOptions{
-		Level:     slog.LevelInfo,
+		Level:     logLevel,
 		AddSource: false, // Include source file and line number for app logs
 	}))
 
 	SecurityLog = slog.New(slog.NewTextHandler(securityWriter, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: logLevel,
 		// The default TextHandler format is `time=... level=... msg=... key=value`.
 		// This is structured and easily parsable, so we'll stick with it.
 	}))

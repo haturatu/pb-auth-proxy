@@ -40,22 +40,63 @@ func main() {
 	mux := http.NewServeMux()
 
 	// --- Static file serving ---
-	assetsPath := config.Paths.Assets + "/"
+	assetsPath := strings.TrimRight(config.Paths.Assets, "/") + "/"
 	assetsFS := http.FileServer(http.Dir("templates"))
 	mux.Handle(assetsPath, http.StripPrefix(assetsPath, assetsFS))
 
-	// --- Public Auth Routes ---
+	// --- Frontend selection and routing ---
+	frontendType := os.Getenv("FRONTEND_TYPE")
 	rateLimiter := middleware.NewRateLimiter()
-	mux.HandleFunc(config.Paths.Login, handlers.LoginHandler)
-	mux.Handle(config.Paths.Register, middleware.RateLimitMiddleware(rateLimiter)(http.HandlerFunc(handlers.RegisterHandler)))
+
+	// Helper to switch handler based on HTTP method
+	methodSwitch := func(get, post http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				post.ServeHTTP(w, r)
+			} else {
+				get.ServeHTTP(w, r)
+			}
+		})
+	}
+
+	if frontendType == "php" {
+		// Create specific handlers for each PHP page
+		loginPageHandler := handlers.NewPhpProxyHandler("login.php")
+		registerPageHandler := handlers.NewPhpProxyHandler("register.php")
+		accountPageHandler := handlers.NewPhpProxyHandler("account.php")
+		accountPasswordPageHandler := handlers.NewPhpProxyHandler("account_password.php")
+
+		// For /login, GET goes to PHP, POST goes to Go's login logic
+		loginHandler := methodSwitch(loginPageHandler, http.HandlerFunc(handlers.LoginHandler))
+		mux.Handle(config.Paths.Login, loginHandler)
+
+		// For /register, GET goes to PHP, POST goes to Go's register logic
+		registerPostHandler := middleware.RateLimitMiddleware(rateLimiter)(http.HandlerFunc(handlers.RegisterHandler))
+		registerHandler := methodSwitch(registerPageHandler, registerPostHandler)
+		mux.Handle(config.Paths.Register, registerHandler)
+
+		// For account pages, GET goes to PHP, POST (for password change) goes to Go
+		accountPasswordPostHandler := http.HandlerFunc(handlers.ChangePasswordHandler)
+		accountPasswordHandler := methodSwitch(accountPasswordPageHandler, accountPasswordPostHandler)
+		mux.Handle(config.Paths.AccountPassword, middleware.SessionAuth(accountPasswordHandler))
+		mux.Handle(config.Paths.Account, middleware.SessionAuth(accountPageHandler)) // This page is GET only
+
+		// Admin page still uses Go templates
+		mux.Handle(config.Paths.Admin, middleware.SessionAuth(middleware.AdminMiddleware(http.HandlerFunc(handlers.AdminPageHandler))))
+	} else {
+		// --- Public Auth Routes (Go templates) ---
+		mux.HandleFunc(config.Paths.Login, handlers.LoginHandler)
+		mux.Handle(config.Paths.Register, middleware.RateLimitMiddleware(rateLimiter)(http.HandlerFunc(handlers.RegisterHandler)))
+		// --- Auth HTML pages (Protected by SessionAuth, Go templates) ---
+		mux.Handle(config.Paths.Account, middleware.SessionAuth(http.HandlerFunc(handlers.AccountPageHandler)))
+		mux.Handle(config.Paths.Admin, middleware.SessionAuth(middleware.AdminMiddleware(http.HandlerFunc(handlers.AdminPageHandler))))
+		mux.Handle(config.Paths.AccountPassword, middleware.SessionAuth(http.HandlerFunc(handlers.ChangePasswordHandler)))
+	}
+
+	// --- Common Routes ---
 	mux.HandleFunc(config.Paths.Logout, handlers.LogoutHandler)
 	mux.HandleFunc("/auth/refresh", handlers.RefreshTokenHandler)
 	mux.HandleFunc("/api/auth/token", handlers.TokenHandler)
-
-	// --- Auth HTML pages (Protected by SessionAuth) ---
-	mux.Handle(config.Paths.Account, middleware.SessionAuth(http.HandlerFunc(handlers.AccountPageHandler)))
-	mux.Handle(config.Paths.Admin, middleware.SessionAuth(middleware.AdminMiddleware(http.HandlerFunc(handlers.AdminPageHandler))))
-	mux.Handle(config.Paths.AccountPassword, middleware.SessionAuth(http.HandlerFunc(handlers.ChangePasswordHandler)))
 
 	// --- Protected API Endpoints (for Admin UI, protected by SessionAuth) ---
 	adminUsersAPI := http.HandlerFunc(handlers.GetUsersHandler)
@@ -107,8 +148,8 @@ func main() {
 	})
 
 	// --- Start Server ---
-	logging.AppLog.Info("Server starting on :8081")
-	if err := http.ListenAndServe(":8081", finalHandler); err != nil {
+	logging.AppLog.Info("Server starting on :8080")
+	if err := http.ListenAndServe(":8080", finalHandler); err != nil {
 		logging.AppLog.Error("Server failed to start", "error", err)
 		os.Exit(1)
 	}

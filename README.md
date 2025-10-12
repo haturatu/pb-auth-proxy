@@ -10,6 +10,7 @@ It handles user registration, login, and session management, and proxies authent
 - **Reverse Proxy**: Proxies authenticated users to a backend service.
 - **Admin Dashboard**: A simple UI to manage users (update roles, activate/deactivate, delete).
 - **Flexible Database Support**: Works with PostgreSQL, MySQL, and SQLite.
+- **Pluggable Frontend**: Supports multiple frontend modes (JS-driven or PHP).
 - **Security Hardening**:
     - **Brute-force Protection**: Locks user accounts after a configurable number of failed login attempts.
     - **User Creation Rate Limiting**: Prevents the same IP from creating too many users in a short period.
@@ -19,20 +20,54 @@ It handles user registration, login, and session management, and proxies authent
 - **Structured Logging**: Detailed application and security logs using `slog`.
 - **CLI for Admin Creation**: A command-line tool to easily create initial admin users.
 
-### Password Policies
+## Security and Authentication Details
 
-The password strength requirements can be configured by setting the `PASSWORD_POLICY` variable in the `.env` file. The available levels are:
+### Password Encryption
 
-- **`none`**: No requirements. Any password is allowed.
-- **`standard`** (Default): A minimum length of 6 characters is required.
-- **`enhanced`**: A minimum length of 8 characters is required. The password must contain at least one of each of the following: an uppercase letter, a lowercase letter, a number, and a symbol (e.g., `!@#$%^&*`).
-- **`strict`**: A minimum length of 12 characters is required. The password must meet the same complexity requirements as `enhanced` (uppercase, lowercase, number, and symbol).
+User passwords are never stored in plaintext. They are securely hashed using the **bcrypt** algorithm, a strong, adaptive hashing function designed specifically for passwords. When a user logs in, the provided password is
+hashed and then compared to the stored hash, preventing plaintext password exposure even if the database is compromised.
+
+### Authentication Flow
+
+The proxy supports two distinct authentication flows for different use cases:
+
+#### 1. Web UI (Session-Based)
+
+This flow is designed for users interacting with the application through a web browser.
+
+1.  A user submits their username and password via the login page.
+2.  The server validates the credentials against the database.
+3.  On success, a cryptographically secure, random token is generated and stored in the database, associated with the user.
+4.  This token is sent to the user's browser in a secure, `HttpOnly` cookie named `auth_token`, establishing a session.
+
+#### 2. API (JWT-Based)
+
+This flow is designed for programmatic clients and services.
+
+1.  A client sends a `POST` request with the user's username and password to the `/api/auth/token` endpoint.
+2.  The server validates the credentials.
+3.  On success, it generates and returns two tokens:
+    *   A short-lived **JWT Access Token** containing user claims (ID, role) and an expiration time. This token is signed to prevent tampering.
+    *   A long-lived **Refresh Token** that is stored in the database and can be used to obtain a new access token.
+
+### Session Management
+
+#### Web UI Sessions
+
+For subsequent requests from a browser, the `auth_token` cookie is automatically sent to the server. A middleware validates this token by looking it up in the database. If the token is valid and has not expired, the request is authenticated and allowed to proceed. When a user logs out, the session token is deleted from the database, effectively invalidating the session.
+
+#### API Sessions (Stateless with JWT)
+
+For API requests, the client must include the JWT Access Token in the `Authorization: Bearer <token>` header. A middleware on the server validates the token's signature and expiration time. This process is stateless, meaning it does not require a database lookup for every request, making it highly efficient. If the access token has expired, the client can use the refresh token to request a new access token without re-authenticating.
+
+**Note on Authentication Precedence:** When an API endpoint is protected (i.e., `PROTECT_API=true`), the middleware first looks for an `Authorization: Bearer` header. If this header is not present, it will fall back to validating the `auth_token` session cookie. This allows users who are logged into the web UI to also authenticate to the API using their browser session, but it means that API endpoints are accessible via either a valid JWT or a valid session cookie.
 
 ## Getting Started
 
 ### Prerequisites
 
 - Go 1.21 or later
+- (Optional) A running PHP-FPM service if you intend to use the PHP frontend.
 - (Optional) PostgreSQL or MySQL database server.
 
 ### Installation
@@ -64,7 +99,7 @@ Configuration is managed via a `.env` file in the root of the project. Create a 
 # The URL of the backend service you want to protect
 TARGET_URL=http://localhost:8081
 
-# A long, random string for securing session cookies
+# A long, random string for securing session cookies and JWTs
 # For production, generate a new key using: openssl rand -base64 45
 SESSION_SECRET=my-super-secret-key
 
@@ -79,6 +114,18 @@ DATABASE_URL=mysql://test:test@127.0.0.1:3306/auth
 # Option 2: SQLite (Default if DATABASE_URL is not set)
 # DATABASE_PATH=./auth.db
 
+# --- Frontend & Proxy ---
+# Frontend mode: "js" (default) or "php"
+FRONTEND_TYPE=js
+# If true, protects the frontend path with session authentication
+PROTECT_FRONTEND=false
+# If true, protects the API path with bearer token authentication
+PROTECT_API=false
+# Base path for frontend routes to be protected
+FRONT_PATH=/
+# Base path for API routes to be protected
+API_PATH=/api/
+
 # --- Security Policies --- 
 
 # Brute-force protection settings
@@ -92,6 +139,14 @@ USER_CREATION_RATE_LIMIT_WINDOW_SECONDS=3600
 # Password policy (none, standard, enhanced, strict)
 PASSWORD_POLICY=standard
 
+# --- Token Durations ---
+# Duration for the web session cookie
+TOKEN_DURATION_HOURS=24
+# Duration for the API JWT access token
+ACCESS_TOKEN_DURATION_MINUTES=15
+# Duration for the API JWT refresh token
+REFRESH_TOKEN_DURATION_DAYS=7
+
 # --- Optional: Path Overrides ---
 # Uncomment and change these to avoid URL conflicts with your backend application.
 # AUTH_PATH_LOGIN=/login
@@ -101,8 +156,55 @@ PASSWORD_POLICY=standard
 # AUTH_PATH_ACCOUNT_PASSWORD=/account/password
 # AUTH_PATH_ADMIN=/admin
 # AUTH_PATH_ADMIN_USERS_API=/api/admin/users
-# AUTH_ASSETS_PATH=/auth-proxy-assets
+# AUTH_ASSETS_PATH=/assets
 ```
+
+### Frontend Selection
+
+You can choose between two frontend modes using the `FRONTEND_TYPE` environment variable:
+
+-   **`js` (or empty)**: This is the default mode. The server renders the basic HTML templates, and all authentication logic (rendering forms, handling user input) is expected to be managed by your frontend JavaScript code, which will interact with the Go backend's API endpoints.
+-   **`php`**: To use the PHP-based views, you must have a running PHP-FPM service. This mode proxies GET requests for authentication pages to your PHP-FPM service, while POST requests (like login submissions) are handled by the Go backend.
+
+#### PHP Frontend Setup
+
+If you choose `FRONTEND_TYPE=php`, follow these steps:
+
+1.  **Set Frontend Type in `.env`**:
+    ```dotenv
+    FRONTEND_TYPE=php
+    ```
+
+2.  **Configure PHP-FPM Connection in `.env`**:
+    You need to provide the path to the PHP-FPM socket and the document root.
+    -   `PHP_FPM_SOCKET`: The path to the PHP-FPM socket file (e.g., `/run/php-fpm/php-fpm.sock`).
+    -   `PHP_DOC_ROOT`: The **absolute path** to the directory containing the PHP view files (e.g., `login.php`). This path must be accessible *by the PHP-FPM process*.
+
+3.  **Copy PHP Files and Set Permissions**:
+    The user that the PHP-FPM service runs as needs read access to the PHP template files.
+
+    First, determine the PHP-FPM user. You can often find this in your PHP-FPM pool configuration file (e.g., `/etc/php/8.3/fpm/pool.d/www.conf`) or by checking the running processes:
+    ```sh
+    # Example command to find the PHP-FPM user
+    ps aux | grep php-fpm
+    ```
+    Common users are `www-data`, `http`, or `apache`.
+
+    Next, copy the `templates/php` directory to a location accessible by PHP-FPM (e.g., `/var/www/html/auth-proxy`) and set the correct ownership.
+
+    ```sh
+    # Example setup, assuming the user is 'http'
+    sudo cp -r templates/php /var/www/html/auth-proxy/php
+    sudo chown -R http:http /var/www/html/auth-proxy
+    ```
+
+    Finally, update your `.env` file with the correct paths:
+    ```dotenv
+    # --- PHP Frontend Settings ---
+    FRONTEND_TYPE=php
+    PHP_FPM_SOCKET=/run/php-fpm/php-fpm.sock
+    PHP_DOC_ROOT=/var/www/html/auth-proxy/php
+    ```
 
 ### Database Setup Examples
 
@@ -216,21 +318,31 @@ Authorization: Bearer <access_token>
 
 The `refresh_token` is a long-lived token that can be used to obtain a new access token once the old one expires. To do this, send a `POST` request to the `/auth/refresh` endpoint.
 
-**Note:** The token lifetimes (`ACCESS_TOKEN_DURATION_MINUTES`, `REFRESH_TOKEN_DURATION_DAYS`) can be configured in your `.env` file.
+**Note:** The token lifetimes can be configured in your `.env` file. See the configuration table for details.
 
 ## Configuration Details
 
-| Environment Variable                      | Description                                                                                                                            | Default Value          |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| `TARGET_URL`                              | **(Required)** The URL of the backend service to proxy to.                                                                             | -                      |
-| `SESSION_SECRET`                          | **(Required)** A long, random secret key for encrypting session cookies.                                                               | `default-secret-key-for-dev` |
-| `DATABASE_URL`                            | The connection string for PostgreSQL or MySQL. If set, this overrides `DATABASE_PATH`.                                                 | -                      |
-| `DATABASE_PATH`                           | The file path for the SQLite database. Used only if `DATABASE_URL` is not set.                                                         | `./auth.db`            |
-| `MAX_LOGIN_ATTEMPTS`                      | Number of failed login attempts before an account is locked.                                                                           | `5`                    |
-| `LOCKOUT_DURATION_MINUTES`                | Duration in minutes for how long an account remains locked.                                                                            | `10`                   |
-| `USER_CREATION_RATE_LIMIT_MAX_REQUESTS`   | Max number of user registrations allowed from a single IP within the time window.                                                      | `5`                    |
-| `USER_CREATION_RATE_LIMIT_WINDOW_SECONDS` | The time window in seconds for the user creation rate limit.                                                                           | `3600` (1 hour)        |
-| `PASSWORD_POLICY`                         | Sets the password strength requirements. See the "Password Policies" section for details.                                        | `standard`             |
-| `AUTH_PATH_*`                             | A set of variables to customize the internal URLs for login, admin, etc., to prevent conflicts with the backend. See `.env` example. | Various, e.g., `/login`|
-| `AUTH_ASSETS_PATH`                        | The URL path for serving internal static assets (CSS, JS).                                                                             | `/auth-proxy-assets`   |
-
+| Environment Variable | Description | Default Value |
+| --- | --- | --- |
+| `TARGET_URL` | **(Required)** The URL of the backend service to proxy to. | - |
+| `SESSION_SECRET` | **(Required)** A long, random secret key for encrypting session cookies and signing JWTs. | `default-secret-key-for-dev` |
+| `DATABASE_URL` | The connection string for PostgreSQL or MySQL. If set, this overrides `DATABASE_PATH`. | - |
+| `DATABASE_PATH` | The file path for the SQLite database. Used only if `DATABASE_URL` is not set. | `./auth.db` |
+| `LOG_LEVEL` | Sets the logging level. Can be `DEBUG`, `INFO`, `WARN`, `ERROR`. | `INFO` |
+| `FRONTEND_TYPE` | Switches the frontend rendering mode. Can be `js` or `php`. | `js` |
+| `PHP_FPM_SOCKET` | The file path to the PHP-FPM socket. Used only when `FRONTEND_TYPE` is `php`. | `/run/php-fpm/php-fpm.sock` |
+| `PHP_DOC_ROOT` | The absolute path to the PHP files directory. Used only when `FRONTEND_TYPE` is `php`. | - |
+| `MAX_LOGIN_ATTEMPTS` | Number of failed login attempts before an account is locked. | `5` |
+| `LOCKOUT_DURATION_MINUTES` | Duration in minutes for how long an account remains locked. | `10` |
+| `USER_CREATION_RATE_LIMIT_MAX_REQUESTS` | Max number of user registrations allowed from a single IP within the time window. | `5` |
+| `USER_CREATION_RATE_LIMIT_WINDOW_SECONDS` | The time window in seconds for the user creation rate limit. | `3600` (1 hour) |
+| `PASSWORD_POLICY` | Sets the password strength requirements (`none`, `standard`, `enhanced`, `strict`). | `standard` |
+| `TOKEN_DURATION_HOURS` | The duration in hours for the web session cookie. | `24` |
+| `ACCESS_TOKEN_DURATION_MINUTES` | The duration in minutes for a JWT access token for API clients. | `15` |
+| `REFRESH_TOKEN_DURATION_DAYS` | The duration in days for a JWT refresh token for API clients. | `7` |
+| `PROTECT_FRONTEND` | If `true`, proxies all frontend paths through session authentication. | `false` |
+| `PROTECT_API` | If `true`, proxies all API paths through bearer token authentication. | `false` |
+| `FRONT_PATH` | The base path for frontend routes to be protected by `PROTECT_FRONTEND`. | `/` |
+| `API_PATH` | The base path for API routes to be protected by `PROTECT_API`. | `/api/` |
+| `AUTH_PATH_*` | A set of variables to customize the internal URLs for login, admin, etc. | Various, e.g., `/login`|
+| `AUTH_ASSETS_PATH` | The URL path for serving internal static assets (CSS, JS). | `/assets` |
