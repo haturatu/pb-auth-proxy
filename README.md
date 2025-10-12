@@ -4,6 +4,12 @@ This is a simple authenticating reverse proxy written in Go. It provides a flexi
 
 It handles user registration, login, and session management, and proxies authenticated requests to the configured backend. It also includes an administration dashboard for user management.
 
+## Why I Built This
+
+I'm also the developer of [puremania](https://github.com/haturatu/puremania), and I wanted to avoid adding complex authentication logic to that project.
+While integrating authentication into every application is good for security, it's a hassle to manage separate IDs and passwords for each one. This is a common problem for self-hosting enthusiasts who need a centralized way to control access.
+This project aims to solve that by acting as a central authentication service. By referencing the same database, user information can be shared across different applications.
+
 ## Features
 
 - **Authentication**: Provides login, logout, and registration pages.
@@ -92,13 +98,16 @@ For API requests, the client must include the JWT Access Token in the `Authoriza
 
 Configuration is managed via a `.env` file in the root of the project. Create a file named `.env` and add the necessary variables.
 
-**Example `.env` file:**
+# Example `.env` file:
 
 ```dotenv
-# --- Required --- 
+# --- Server Settings ---
+# The port for the proxy server to listen on
+LISTEN_PORT=8080
+
+# --- Required ---
 # The URL of the backend service you want to protect
 TARGET_URL=http://localhost:8081
-
 # A long, random string for securing session cookies and JWTs
 # For production, generate a new key using: openssl rand -base64 45
 SESSION_SECRET=my-super-secret-key
@@ -328,7 +337,8 @@ The `refresh_token` is a long-lived token that can be used to obtain a new acces
 | `SESSION_SECRET` | **(Required)** A long, random secret key for encrypting session cookies and signing JWTs. | `default-secret-key-for-dev` |
 | `DATABASE_URL` | The connection string for PostgreSQL or MySQL. If set, this overrides `DATABASE_PATH`. | - |
 | `DATABASE_PATH` | The file path for the SQLite database. Used only if `DATABASE_URL` is not set. | `./auth.db` |
-| `LOG_LEVEL` | Sets the logging level. Can be `DEBUG`, `INFO`, `WARN`, `ERROR`. | `INFO` |
+| `LOG_LEVEL` | Sets the logging level. Can be `DEBUG`, `INFO`, `WARN`, `ERROR`. | `INFO`                 |
+| `LISTEN_PORT` | The port for the proxy server to listen on. | `8080`                 |
 | `FRONTEND_TYPE` | Switches the frontend rendering mode. Can be `js` or `php`. | `js` |
 | `PHP_FPM_SOCKET` | The file path to the PHP-FPM socket. Used only when `FRONTEND_TYPE` is `php`. | `/run/php-fpm/php-fpm.sock` |
 | `PHP_DOC_ROOT` | The absolute path to the PHP files directory. Used only when `FRONTEND_TYPE` is `php`. | - |

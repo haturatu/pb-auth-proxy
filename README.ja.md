@@ -4,6 +4,14 @@
 
 ユーザー登録、ログイン、セッション管理を処理し、認証されたリクエストを設定済みのバックエンドにプロキシします。また、ユーザー管理のための管理ダッシュボードも含まれています。
 
+## なぜ作ったか
+私の作成している  
+[GitHub - haturatu/puremania: No security, very fast, web UI self-hosted online storage](https://github.com/haturatu/puremania)  
+がありますが、これに複雑になりがちな認証機能を持たせなくなかったからです。  
+また、一つのアプリケーションに認証を組み込むとセキュリティ上は良いですがID/Passwordなどをそれぞれに合わせて作成する必要がありとても面倒です。  
+特にセルフホストが好きな人にとってはどうアクセス制御するか、です。  
+ある主、このサーバーが認証基盤として機能して同じDBを参照することによってユーザ情報は共有できます。
+
 ## 主な機能
 
 - **認証**: ログイン、ログアウト、登録ページを提供します。
@@ -91,9 +99,13 @@ APIリクエストの場合、クライアントは`Authorization: Bearer <token
 
 設定はプロジェクトのルートにある `.env` ファイルで管理されます。`.env` という名前のファイルを作成し、必要な変数を追加してください。
 
-**`.env` ファイルの例:**
+# `.env` ファイルの例:
 
 ```dotenv
+# --- サーバー設定 ---
+# プロキシサーバーがリッスンするポート
+LISTEN_PORT=8080
+
 # --- 必須 ---
 # 保護したいバックエンドサービスのURL
 TARGET_URL=http://localhost:8081
@@ -327,7 +339,8 @@ Authorization: Bearer <access_token>
 | `SESSION_SECRET` | **(必須)** セッションクッキーの暗号化とJWTの署名に使用する、長くてランダムな秘密鍵。 | `default-secret-key-for-dev` |
 | `DATABASE_URL` | PostgreSQLまたはMySQLの接続文字列。設定されている場合、`DATABASE_PATH`より優先されます。 | - |
 | `DATABASE_PATH` | SQLiteデータベースのファイルパス。`DATABASE_URL`が設定されていない場合のみ使用されます。 | `./auth.db` |
-| `LOG_LEVEL` | ログレベルを設定します。`DEBUG`, `INFO`, `WARN`, `ERROR`が指定できます。 | `INFO` |
+| `LOG_LEVEL` | ログレベルを設定します。`DEBUG`, `INFO`, `WARN`, `ERROR`が指定できます。 | `INFO`                 |
+| `LISTEN_PORT` | プロキシサーバーがリッスンするポート。 | `8080`                 |
 | `FRONTEND_TYPE` | フロントエンドのレンダリングモードを切り替えます。`js`または`php`が指定できます。 | `js` |
 | `PHP_FPM_SOCKET` | PHP-FPMソケットへのファイルパス。`FRONTEND_TYPE`が`php`の場合のみ使用されます。 | `/run/php-fpm/php-fpm.sock` |
 | `PHP_DOC_ROOT` | PHPファイルディレクトリへの絶対パス。`FRONTEND_TYPE`が`php`の場合のみ使用されます。 | - |
