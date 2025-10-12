@@ -1,29 +1,18 @@
 package middleware
 
 import (
+	"auth-proxy/config"
 	"auth-proxy/types"
 	"net"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 )
 
 func NewRateLimiter() *types.RateLimiter {
-	maxRequests, err := strconv.Atoi(os.Getenv("USER_CREATION_RATE_LIMIT_MAX_REQUESTS"))
-	if err != nil || maxRequests <= 0 {
-		maxRequests = 5 // Default value
-	}
-
-	windowSeconds, err := strconv.Atoi(os.Getenv("USER_CREATION_RATE_LIMIT_WINDOW_SECONDS"))
-	if err != nil || windowSeconds <= 0 {
-		windowSeconds = 3600 // Default value (1 hour)
-	}
-
 	return &types.RateLimiter{
 		Requests: make(map[string][]int64),
-		Max:      maxRequests,
-		Window:   time.Duration(windowSeconds) * time.Second,
+		Max:      config.Paths.RateLimitMaxRequests,
+		Window:   time.Duration(config.Paths.RateLimitWindowSeconds) * time.Second,
 	}
 }
 

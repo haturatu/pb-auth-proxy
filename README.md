@@ -18,7 +18,7 @@ This project aims to solve that by acting as a central authentication service. B
 - **Flexible Database Support**: Works with PostgreSQL, MySQL, and SQLite.
 - **Pluggable Frontend**: Supports multiple frontend modes (JS-driven or PHP).
 - **Security Hardening**:
-    - **Brute-force Protection**: Locks user accounts after a configurable number of failed login attempts.
+    - **Brute-force Protection**: Locks user accounts after a configurable number of failed login attempts. This protection applies to both the web UI login and the `/api/auth/token` endpoint.
     - **User Creation Rate Limiting**: Prevents the same IP from creating too many users in a short period.
     - **Configurable Password Policies**: Enforce password strength requirements. See details below.
     - **Secure Session Cookies**: Uses `HttpOnly` secure cookies for session management.

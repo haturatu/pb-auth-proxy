@@ -29,12 +29,23 @@ func getEnvAsBool(key string, fallback bool) bool {
 	return fallback
 }
 
+// getEnvAsInt reads an environment variable as an integer or returns a fallback value.
+func getEnvAsInt(key string, fallback int) int {
+	if value, ok := os.LookupEnv(key); ok {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
+	}
+	return fallback
+}
+
 // Init loads path configurations from environment variables.
 func Init() {
 	// Load .env file. Errors are ignored, so variables from the environment can still be used.
 	_ = godotenv.Load()
 
 	Paths = types.PathConfig{
+		// Paths
 		Login:           getEnv("AUTH_PATH_LOGIN", "/login"),
 		Register:        getEnv("AUTH_PATH_REGISTER", "/register"),
 		Logout:          getEnv("AUTH_PATH_LOGOUT", "/logout"),
@@ -43,10 +54,25 @@ func Init() {
 		Admin:           getEnv("AUTH_PATH_ADMIN", "/admin"),
 		AdminUsersAPI:   getEnv("AUTH_PATH_ADMIN_USERS_API", "/api/admin/users"),
 		Assets:          getEnv("AUTH_ASSETS_PATH", "/assets"),
-		ProtectFrontend: getEnvAsBool("PROTECT_FRONTEND", false),
-		ProtectAPI:      getEnvAsBool("PROTECT_API", false),
 		FrontPath:       getEnv("FRONT_PATH", "/"),
 		APIPath:         getEnv("API_PATH", "/api/"),
+
+		// Booleans
+		ProtectFrontend: getEnvAsBool("PROTECT_FRONTEND", false),
+		ProtectAPI:      getEnvAsBool("PROTECT_API", false),
 		RegisterEnabled: getEnvAsBool("REGISTER", true),
+
+		// Security Policies
+		MaxLoginAttempts:         getEnvAsInt("MAX_LOGIN_ATTEMPTS", 5),
+		LockoutDurationMinutes:   getEnvAsInt("LOCKOUT_DURATION_MINUTES", 10),
+		RateLimitMaxRequests:     getEnvAsInt("USER_CREATION_RATE_LIMIT_MAX_REQUESTS", 5),
+		RateLimitWindowSeconds:   getEnvAsInt("USER_CREATION_RATE_LIMIT_WINDOW_SECONDS", 3600),
+		PasswordPolicy:           getEnv("PASSWORD_POLICY", "standard"),
+
+		// Token Durations
+		TokenDurationHours:        getEnvAsInt("TOKEN_DURATION_HOURS", 24),
+		AccessTokenDurationMinutes: getEnvAsInt("ACCESS_TOKEN_DURATION_MINUTES", 15),
+		RefreshTokenDurationDays:  getEnvAsInt("REFRESH_TOKEN_DURATION_DAYS", 7),
 	}
 }
+

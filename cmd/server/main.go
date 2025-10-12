@@ -139,7 +139,12 @@ func main() {
 	// --- Main Application Proxy ---
 	proxyHandler := handlers.NewProxy(targetURL)
 
-	// --- CSRF Protection (for Web UI) ---
+	// --- Secret Key Validation ---
+	sessionSecret := os.Getenv("SESSION_SECRET")
+	if sessionSecret == "" {
+		logging.AppLog.Warn("SESSION_SECRET environment variable not set. Using default key. THIS IS NOT SAFE FOR PRODUCTION.")
+		sessionSecret = "default-secret-key-for-dev"
+	}
 	csrfSecret := os.Getenv("CSRF_SECRET_KEY")
 	if csrfSecret == "" {
 		logging.AppLog.Error("CSRF_SECRET_KEY environment variable not set")

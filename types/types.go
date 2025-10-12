@@ -8,6 +8,7 @@ import (
 
 // PathConfig holds the configurable paths for the application routes and assets.
 type PathConfig struct {
+	// Paths
 	Login           string
 	Register        string
 	Logout          string
@@ -16,11 +17,25 @@ type PathConfig struct {
 	Admin           string
 	AdminUsersAPI   string
 	Assets          string
-	ProtectFrontend bool
-	ProtectAPI      bool
 	FrontPath       string
 	APIPath         string
+
+	// Booleans
+	ProtectFrontend bool
+	ProtectAPI      bool
 	RegisterEnabled bool
+
+	// Security Policies
+	MaxLoginAttempts       int
+	LockoutDurationMinutes int
+	RateLimitMaxRequests   int
+	RateLimitWindowSeconds int
+	PasswordPolicy         string
+
+	// Token Durations
+	TokenDurationHours        int
+	AccessTokenDurationMinutes int
+	RefreshTokenDurationDays  int
 }
 
 // ContextKey is a custom type for context keys to avoid collisions.

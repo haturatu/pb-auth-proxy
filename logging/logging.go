@@ -20,9 +20,18 @@ func InitLoggers() {
 	appWriter := os.Stdout
 	securityWriter := os.Stdout
 
-	logLevel := slog.LevelInfo
-	if strings.ToUpper(os.Getenv("LOG_LEVEL")) == "DEBUG" {
+	var logLevel slog.Level
+	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
+	case "DEBUG":
 		logLevel = slog.LevelDebug
+	case "INFO":
+		logLevel = slog.LevelInfo
+	case "WARN":
+		logLevel = slog.LevelWarn
+	case "ERROR":
+		logLevel = slog.LevelError
+	default:
+		logLevel = slog.LevelInfo // Default to INFO
 	}
 
 	AppLog = slog.New(slog.NewTextHandler(appWriter, &slog.HandlerOptions{

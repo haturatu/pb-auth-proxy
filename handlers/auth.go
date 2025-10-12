@@ -10,8 +10,6 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/gorilla/csrf"
@@ -35,8 +33,7 @@ func authenticateUser(username, password, ip string) (*types.User, error) {
 
 	// Step 1: Check if the account is locked.
 	if !user.IsActive {
-		lockoutMinutes, _ := strconv.Atoi(os.Getenv("LOCKOUT_DURATION_MINUTES"))
-		lockoutDuration := time.Duration(lockoutMinutes) * time.Minute
+		lockoutDuration := time.Duration(config.Paths.LockoutDurationMinutes) * time.Minute
 
 		// Check if the lockout period has expired.
 		if time.Since(user.UpdatedAt) < lockoutDuration {
@@ -65,7 +62,7 @@ func authenticateUser(username, password, ip string) (*types.User, error) {
 
 		// Re-fetch user to get updated failed_logins count
 		updatedUser, _ := models.GetUserByID(user.ID)
-		maxAttempts, _ := strconv.Atoi(os.Getenv("MAX_LOGIN_ATTEMPTS"))
+		maxAttempts := config.Paths.MaxLoginAttempts
 
 		// Lock the account if max attempts are exceeded
 		if maxAttempts > 0 && updatedUser.FailedLogins >= maxAttempts {
@@ -134,17 +131,15 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 				errMsg = "Account is temporarily locked."
 			} else if err.Error() == "internal server error" {
 				errMsg = "An internal error occurred. Please try again."
+			} else if err.Error() == "account has been unlocked, please try again" {
+				errMsg = "Account has been unlocked. Please try logging in again."
 			}
 			renderLoginWithError(w, r, errMsg)
 			return
 		}
 
 		// --- Create Session Cookie ---
-		tokenDurationHours, err := strconv.Atoi(os.Getenv("TOKEN_DURATION_HOURS"))
-		if err != nil || tokenDurationHours <= 0 {
-			tokenDurationHours = 24 // Default to 24 hours
-		}
-		duration := time.Duration(tokenDurationHours) * time.Hour
+		duration := time.Duration(config.Paths.TokenDurationHours) * time.Hour
 
 		token, err := models.CreateAuthToken(user.ID, duration)
 		if err != nil {
@@ -323,11 +318,7 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Issue a new access token
-	accessTokenDurationMinutes, _ := strconv.Atoi(os.Getenv("ACCESS_TOKEN_DURATION_MINUTES"))
-	if accessTokenDurationMinutes <= 0 {
-		accessTokenDurationMinutes = 15
-	}
-	newAccessToken, err := utils.GenerateJWT(user, time.Duration(accessTokenDurationMinutes)*time.Minute)
+	newAccessToken, err := utils.GenerateJWT(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute)
 	if err != nil {
 		logging.AppLog.Error("Failed to generate new access token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -342,11 +333,7 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 6. Issue a new refresh token
-	refreshTokenDurationDays, _ := strconv.Atoi(os.Getenv("REFRESH_TOKEN_DURATION_DAYS"))
-	if refreshTokenDurationDays <= 0 {
-		refreshTokenDurationDays = 7
-	}
-	newRefreshToken, err := models.CreateRefreshToken(user.ID, time.Duration(refreshTokenDurationDays)*24*time.Hour)
+	newRefreshToken, err := models.CreateRefreshToken(user.ID, time.Duration(config.Paths.RefreshTokenDurationDays)*24*time.Hour)
 	if err != nil {
 		logging.AppLog.Error("Failed to create new refresh token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -393,11 +380,7 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- Issue Tokens ---
 	// Access Token
-	accessTokenDurationMinutes, _ := strconv.Atoi(os.Getenv("ACCESS_TOKEN_DURATION_MINUTES"))
-	if accessTokenDurationMinutes <= 0 {
-		accessTokenDurationMinutes = 15
-	}
-	accessToken, err := utils.GenerateJWT(user, time.Duration(accessTokenDurationMinutes)*time.Minute)
+	accessToken, err := utils.GenerateJWT(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute)
 	if err != nil {
 		logging.AppLog.Error("Failed to generate access token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
@@ -405,11 +388,7 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refresh Token
-	refreshTokenDurationDays, _ := strconv.Atoi(os.Getenv("REFRESH_TOKEN_DURATION_DAYS"))
-	if refreshTokenDurationDays <= 0 {
-		refreshTokenDurationDays = 7
-	}
-	refreshToken, err := models.CreateRefreshToken(user.ID, time.Duration(refreshTokenDurationDays)*24*time.Hour)
+	refreshToken, err := models.CreateRefreshToken(user.ID, time.Duration(config.Paths.RefreshTokenDurationDays)*24*time.Hour)
 	if err != nil {
 		logging.AppLog.Error("Failed to create refresh token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Failed to create refresh token", http.StatusInternalServerError)

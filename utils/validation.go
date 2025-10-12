@@ -1,17 +1,14 @@
 package utils
 
 import (
+	"auth-proxy/config"
 	"fmt"
-	"os"
 	"unicode"
 )
 
 // ValidatePassword checks a password against the policy defined in the PASSWORD_POLICY environment variable.
 func ValidatePassword(password string) (bool, string) {
-	policy := os.Getenv("PASSWORD_POLICY")
-	if policy == "" {
-		policy = "none" // Default to no policy if not set
-	}
+	policy := config.Paths.PasswordPolicy
 
 	switch policy {
 	case "none":
