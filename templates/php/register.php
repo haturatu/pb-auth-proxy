@@ -17,7 +17,7 @@
     <div class="container form-container">
         <h2>Create Account</h2>
         <form id="register-form" action="<?php echo htmlspecialchars($paths['Register']); ?>" method="post">
-            <input type="hidden" name="gorilla.csrf.Token" value="<?php echo htmlspecialchars($_SERVER['HTTP_X_CSRF_TOKEN']); ?>">
+            <input type="hidden" name="xsrf_token" value="<?php echo htmlspecialchars($_SERVER['HTTP_X_XSRF_TOKEN']); ?>">
             <div class="form-group">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" required>

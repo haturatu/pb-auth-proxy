@@ -3,18 +3,17 @@ package handlers
 import (
 	"auth-proxy/config"
 	"auth-proxy/logging"
+	"auth-proxy/middleware"
 	"auth-proxy/models"
 	"auth-proxy/types"
-	"auth-proxy/worker"
 	"auth-proxy/utils"
+	"auth-proxy/worker"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/gorilla/csrf"
 )
 
 var workerPool *types.WorkerPool
@@ -37,7 +36,7 @@ func AdminPageHandler(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Paths":     config.Paths,
 		"Users":     users,
-		"CSRFToken": csrf.Token(r),
+		"XSRFToken": middleware.GetXSRFToken(r),
 	}
 	if err := templates.ExecuteTemplate(w, "admin.html", data); err != nil {
 		logging.AppLog.Error("Failed to execute admin template", "error", err)

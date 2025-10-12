@@ -3,14 +3,13 @@ package handlers
 import (
 	"auth-proxy/config"
 	"auth-proxy/logging"
+	"auth-proxy/middleware"
 	"auth-proxy/models"
 	"auth-proxy/types"
 	"errors"
 	"html/template"
 	"net/http"
 	"time"
-
-	"github.com/gorilla/csrf"
 )
 
 var templates = template.Must(template.ParseGlob("templates/*.html"))
@@ -88,7 +87,7 @@ func renderLoginWithError(w http.ResponseWriter, r *http.Request, message string
 		"Paths":           config.Paths,
 		"Error":           message,
 		"RegisterEnabled": config.Paths.RegisterEnabled,
-		"CSRFToken":       csrf.Token(r),
+		"XSRFToken":       middleware.GetXSRFToken(r),
 	}
 	w.WriteHeader(http.StatusUnauthorized) // Set status to indicate failure
 	if err := templates.ExecuteTemplate(w, "login.html", data); err != nil {
@@ -114,7 +113,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		data := map[string]interface{}{
 			"Paths":           config.Paths,
 			"RegisterEnabled": config.Paths.RegisterEnabled,
-			"CSRFToken":       csrf.Token(r),
+			"XSRFToken":       middleware.GetXSRFToken(r),
 		}
 		if err := templates.ExecuteTemplate(w, "login.html", data); err != nil {
 			logging.AppLog.Error("Failed to execute login template", "error", err, "ip", ip)

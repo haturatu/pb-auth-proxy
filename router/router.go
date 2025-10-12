@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/csrf"
+
 )
 
 // NewRouter creates and configures the main application router.
@@ -43,7 +43,7 @@ func NewRouter() http.Handler {
 		})
 	}
 
-	// --- Web UI Routes (CSRF-protected) ---
+	// --- Web UI Routes (XSRF-protected) ---
 	if os.Getenv("FRONTEND_TYPE") == "php" {
 		// PHP frontend routes
 		loginPageHandler := handlers.NewPhpProxyHandler("login.php")
@@ -77,7 +77,7 @@ func NewRouter() http.Handler {
 	}
 	webMux.HandleFunc(config.Paths.Logout, handlers.LogoutHandler)
 
-	// --- API Routes (No CSRF) ---
+	// --- API Routes (No XSRF) ---
 	apiMux.HandleFunc("/api/auth/token", handlers.TokenHandler)
 	apiMux.HandleFunc("/auth/refresh", handlers.RefreshTokenHandler)
 
@@ -113,27 +113,8 @@ func NewRouter() http.Handler {
 	// --- Main Application Proxy ---
 	proxyHandler := handlers.NewProxy(targetURL)
 
-	// --- CSRF Protection (for Web UI) ---
-	csrfSecret := os.Getenv("CSRF_SECRET_KEY")
-	csrfOptions := []csrf.Option{
-		csrf.Secure(os.Getenv("ENV") == "production"),
-		csrf.Path("/"),
-	}
-	sameSiteMode := csrf.SameSiteLaxMode
-	switch strings.ToLower(os.Getenv("CSRF_SAME_SITE")) {
-	case "strict":
-		sameSiteMode = csrf.SameSiteStrictMode
-	case "none":
-		sameSiteMode = csrf.SameSiteNoneMode
-	}
-	csrfOptions = append(csrfOptions, csrf.SameSite(sameSiteMode))
-	trustedOrigins := os.Getenv("CSRF_TRUSTED_ORIGINS")
-	if trustedOrigins != "" {
-		origins := strings.Split(trustedOrigins, ",")
-		csrfOptions = append(csrfOptions, csrf.TrustedOrigins(origins))
-	}
-	csrfMiddleware := csrf.Protect([]byte(csrfSecret), csrfOptions...)
-	csrfProtectedWebMux := middleware.HandleOptions(csrfMiddleware(webMux))
+	// --- XSRF Protection (for Web UI) ---
+	xsrfProtectedWebMux := middleware.HandleOptions(middleware.XSRF(webMux))
 
 	// --- Final Handler ---
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -158,10 +139,10 @@ func NewRouter() http.Handler {
 			return
 		}
 
-		// Check if the path is a web UI path and apply CSRF protection
+		// Check if the path is a web UI path and apply XSRF protection
 		_, webPattern := webMux.Handler(r)
 		if webPattern != "" {
-			csrfProtectedWebMux.ServeHTTP(w, r)
+			xsrfProtectedWebMux.ServeHTTP(w, r)
 			return
 		}
 

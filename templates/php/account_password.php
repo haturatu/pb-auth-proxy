@@ -18,7 +18,7 @@
     <div class="container content-container">
         <h2>Change Password</h2>
         <form id="change-password-form" action="<?php echo htmlspecialchars($paths['AccountPassword']); ?>" method="post">
-            <input type="hidden" name="gorilla.csrf.Token" value="<?php echo htmlspecialchars($_SERVER['HTTP_X_CSRF_TOKEN']); ?>">
+            <input type="hidden" name="xsrf_token" value="<?php echo htmlspecialchars($_SERVER['HTTP_X_XSRF_TOKEN']); ?>">
             <div class="form-group">
                 <label for="current_password">Current Password</label>
                 <input type="password" id="current_password" name="current_password" required>

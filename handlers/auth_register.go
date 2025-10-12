@@ -3,18 +3,17 @@ package handlers
 import (
 	"auth-proxy/config"
 	"auth-proxy/logging"
+	"auth-proxy/middleware"
 	"auth-proxy/models"
 	"auth-proxy/utils"
 	"net/http"
-
-	"github.com/gorilla/csrf"
 )
 
 func renderRegisterWithError(w http.ResponseWriter, r *http.Request, message string) {
 	data := map[string]interface{}{
 		"Paths":     config.Paths,
 		"Error":     message,
-		"CSRFToken": csrf.Token(r),
+		"XSRFToken": middleware.GetXSRFToken(r),
 	}
 	w.WriteHeader(http.StatusBadRequest) // Set status to indicate failure
 	if err := templates.ExecuteTemplate(w, "register.html", data); err != nil {
@@ -31,7 +30,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	ip := logging.GetClientIP(r)
 	data := map[string]interface{}{
 		"Paths":     config.Paths,
-		"CSRFToken": csrf.Token(r),
+		"XSRFToken": middleware.GetXSRFToken(r),
 	}
 
 	if r.Method == http.MethodGet {

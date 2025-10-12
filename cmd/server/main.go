@@ -40,9 +40,9 @@ func main() {
 	if sessionSecret == "" {
 		logging.AppLog.Warn("SESSION_SECRET environment variable not set. Using default key. THIS IS NOT SAFE FOR PRODUCTION.")
 	}
-	csrfSecret := os.Getenv("CSRF_SECRET_KEY")
-	if csrfSecret == "" {
-		logging.AppLog.Error("CSRF_SECRET_KEY environment variable not set")
+	xsrfSecret := os.Getenv("XSRF_SECRET_KEY")
+	if xsrfSecret == "" {
+		logging.AppLog.Error("XSRF_SECRET_KEY environment variable not set")
 		os.Exit(1)
 	}
 

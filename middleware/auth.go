@@ -157,7 +157,7 @@ func AdminMiddleware(next http.Handler) http.Handler {
 }
 
 // HandleOptions is a middleware that handles pre-flight OPTIONS requests.
-// This should be placed before the CSRF middleware.
+// This should be placed before the XSRF middleware.
 func HandleOptions(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
