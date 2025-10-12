@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"auth-proxy/logging"
+	"auth-proxy/worker"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -22,15 +23,21 @@ func NewProxy(targetURL string) http.Handler {
 		director(req)          // Run the default director
 		req.Host = target.Host // Set the Host header to the target's host
 
-		// Log the proxying action
+		// Asynchronously log the proxying action to avoid blocking the request.
+		urlStr := req.URL.String()
 		ip := logging.GetClientIP(req)
-		logging.AppLog.Info("Proxying request", "url", req.URL.String(), "ip", ip)
+		worker.Submit(workerPool, func() {
+			logging.AppLog.Info("Proxying request", "url", urlStr, "ip", ip)
+		})
 	}
 
 	// Custom error handler for logging
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		ip := logging.GetClientIP(r)
-		logging.AppLog.Error("Proxy error", "error", err, "ip", ip)
+		// Asynchronously log the proxy error to avoid blocking the response.
+		worker.Submit(workerPool, func() {
+			logging.AppLog.Error("Proxy error", "error", err, "ip", ip)
+		})
 		http.Error(w, "Proxy Error", http.StatusBadGateway)
 	}
 

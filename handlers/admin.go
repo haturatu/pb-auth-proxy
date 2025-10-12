@@ -5,10 +5,21 @@ import (
 	"auth-proxy/logging"
 	"auth-proxy/models"
 	"auth-proxy/types"
+	"auth-proxy/worker"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 )
+
+var workerPool *types.WorkerPool
+
+// SetWorkerPool sets the package-level worker pool instance.
+func SetWorkerPool(pool *types.WorkerPool) {
+	workerPool = pool
+}
 
 // AdminPageHandler serves the admin dashboard page.
 func AdminPageHandler(w http.ResponseWriter, r *http.Request) {
@@ -24,12 +35,20 @@ func AdminPageHandler(w http.ResponseWriter, r *http.Request) {
 		"Paths": config.Paths,
 		"Users": users,
 	}
-		if err := templates.ExecuteTemplate(w, "admin.html", data); err != nil {
+	if err := templates.ExecuteTemplate(w, "admin.html", data); err != nil {
 		logging.AppLog.Error("Failed to execute admin template", "error", err)
 	}
 }
 
-// GetUsersHandler returns a list of all users.
+// EnrichedUser is a wrapper for User with additional computed fields.
+// Note: We use pointers to the original User to avoid copying large structs.
+type EnrichedUser struct {
+	*types.User
+	TimeSinceLogin string `json:"time_since_login"`
+}
+
+// GetUsersHandler returns a list of all users with enriched information.
+// It uses a worker pool to calculate extra information for each user in parallel.
 func GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 	ip := logging.GetClientIP(r)
 	users, err := models.GetAllUsers()
@@ -39,8 +58,37 @@ func GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	enrichedUsers := make([]EnrichedUser, len(users))
+	var wg sync.WaitGroup
+
+	for i, user := range users {
+		wg.Add(1)
+		// Create copies of loop variables to avoid race conditions in the closure
+		index := i
+		userCopy := user
+
+		task := func() {
+			defer wg.Done()
+			// Simulate some work, e.g., calculating a value or fetching related data.
+			time.Sleep(5 * time.Millisecond)
+
+			timeSinceLogin := "N/A"
+			if userCopy.LastLoginAt.Valid {
+				timeSinceLogin = fmt.Sprintf("%.0fm ago", time.Since(userCopy.LastLoginAt.Time).Minutes())
+			}
+
+			enrichedUsers[index] = EnrichedUser{
+				User:           &userCopy,
+				TimeSinceLogin: timeSinceLogin,
+			}
+		}
+		worker.Submit(workerPool, task)
+	}
+
+	wg.Wait() // Wait for all tasks to complete
+
 	w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(users); err != nil {
+	if err := json.NewEncoder(w).Encode(enrichedUsers); err != nil {
 		logging.AppLog.Error("Failed to encode users to JSON", "error", err, "ip", ip)
 	}
 }

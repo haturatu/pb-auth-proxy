@@ -3,6 +3,7 @@ package handlers
 import (
 	"auth-proxy/config"
 	"auth-proxy/logging"
+	"auth-proxy/worker"
 	"bytes"
 	"io"
 	"io/ioutil"
@@ -28,6 +29,11 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fcgi, err := fcgiclient.Dial("unix", phpFpmSocket)
 		if err != nil {
+			errStr := err.Error()
+			ip := logging.GetClientIP(r)
+			worker.Submit(workerPool, func() {
+				logging.AppLog.Error("Failed to connect to php-fpm", "error", errStr, "ip", ip)
+			})
 			http.Error(w, "Failed to connect to php-fpm: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -73,7 +79,10 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 		env["AUTH_ASSETS_PATH"] = config.Paths.Assets
 
 
-		logging.AppLog.Debug("Proxying to PHP-FPM", "script_filename", scriptFilename, "doc_root", finalDocRoot)
+		// Asynchronously log the proxying action to avoid blocking the request.
+		worker.Submit(workerPool, func() {
+			logging.AppLog.Debug("Proxying to PHP-FPM", "script_filename", scriptFilename, "doc_root", finalDocRoot)
+		})
 
 		env["REQUEST_METHOD"] = r.Method
 		env["SERVER_SOFTWARE"] = "go / auth-proxy"
@@ -99,7 +108,12 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 
 		resp, err := fcgi.Request(env, body)
 		if err != nil {
-			http.Error(w, "FastCGI request failed: "+err.Error(), http.StatusInternalServerError)
+		ip := logging.GetClientIP(r)
+		errStr := err.Error()
+		worker.Submit(workerPool, func() {
+			logging.AppLog.Error("FastCGI request failed", "error", errStr, "ip", ip)
+		})
+		http.Error(w, "FastCGI request failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 

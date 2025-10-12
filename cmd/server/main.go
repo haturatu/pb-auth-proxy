@@ -6,9 +6,13 @@ import (
 	"auth-proxy/handlers"
 	"auth-proxy/logging"
 	"auth-proxy/middleware"
+	"auth-proxy/models"
+	"auth-proxy/types"
+	"auth-proxy/worker"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -28,6 +32,11 @@ func main() {
 	// Initialize database
 	database.InitDB()
 	defer database.CloseDB()
+
+	// Initialize and start the worker pool
+	pool := worker.NewWorkerPool()
+	defer worker.Close(pool)
+	handlers.SetWorkerPool(pool)
 
 	// Get target URL for proxy
 	targetURL := os.Getenv("TARGET_URL")
@@ -147,10 +156,130 @@ func main() {
 		proxyHandler.ServeHTTP(w, r)
 	})
 
-	// --- Start Server ---
-	logging.AppLog.Info("Server starting on :8080")
-	if err := http.ListenAndServe(":8080", finalHandler); err != nil {
-		logging.AppLog.Error("Server failed to start", "error", err)
-		os.Exit(1)
+	// Get server port
+	port := os.Getenv("LISTEN_PORT")
+	if port == "" {
+		port = "8080"
 	}
-}
+	listenAddr := ":" + port
+
+	// --- Start Server ---
+	logging.AppLog.Info("Server starting on " + listenAddr)
+
+		// Start periodic background tasks
+
+		go startBackgroundTasks(pool, rateLimiter)
+
+	
+
+		if err := http.ListenAndServe(listenAddr, finalHandler); err != nil {
+
+			logging.AppLog.Error("Server failed to start", "error", err)
+
+			os.Exit(1)
+
+		}
+
+	}
+
+	
+
+	// startBackgroundTasks launches periodic jobs in the background.
+
+	func startBackgroundTasks(pool *types.WorkerPool, limiter *types.RateLimiter) {
+
+		// Ticker for expired token cleanup (every hour)
+
+		tokenTicker := time.NewTicker(1 * time.Hour)
+
+		defer tokenTicker.Stop()
+
+	
+
+		// Ticker for rate limiter cleanup (every 10 minutes)
+
+		rateLimiterTicker := time.NewTicker(24 * time.Hour)
+
+		defer rateLimiterTicker.Stop()
+
+	
+
+		logging.AppLog.Info("Background task scheduler started")
+
+	
+
+		// Run initial cleanup tasks at startup
+
+		submitTokenCleanup(pool)
+
+		submitRateLimiterCleanup(pool, limiter)
+
+	
+
+		// Run tasks on their respective tickers
+
+		for {
+
+			select {
+
+			case <-tokenTicker.C:
+
+				submitTokenCleanup(pool)
+
+			case <-rateLimiterTicker.C:
+
+				submitRateLimiterCleanup(pool, limiter)
+
+			}
+
+		}
+
+	}
+
+	
+
+	// submitTokenCleanup submits the expired token deletion task to the worker pool.
+
+	func submitTokenCleanup(pool *types.WorkerPool) {
+
+		worker.Submit(pool, func() {
+
+			logging.AppLog.Info("Running background task: deleting expired tokens")
+
+			rowsAffected, err := models.DeleteExpiredTokens()
+
+			if err != nil {
+
+				logging.AppLog.Error("Failed to delete expired tokens", "error", err)
+
+			} else {
+
+				if rowsAffected > 0 {
+
+					logging.AppLog.Info("Finished deleting expired tokens", "deleted_count", rowsAffected)
+
+				}
+
+			}
+
+		})
+
+	}
+
+	
+
+	// submitRateLimiterCleanup submits the rate limiter cleanup task to the worker pool.
+
+	func submitRateLimiterCleanup(pool *types.WorkerPool, limiter *types.RateLimiter) {
+
+		worker.Submit(pool, func() {
+
+			logging.AppLog.Info("Running background task: cleaning up rate limiter")
+
+			middleware.Cleanup(limiter)
+
+		})
+
+	}
+
+	

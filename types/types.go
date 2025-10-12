@@ -72,3 +72,12 @@ type RateLimiter struct {
 	Max      int
 	Window   time.Duration
 }
+
+// WorkerPool manages a pool of goroutines to execute tasks concurrently.
+type WorkerPool struct {
+	Workers    int
+	TaskQueue  chan func()
+	ResultChan chan interface{}
+	Wg         sync.WaitGroup
+	Active     int64
+}

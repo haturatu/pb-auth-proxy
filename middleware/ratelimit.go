@@ -67,3 +67,16 @@ func RateLimitMiddleware(l *types.RateLimiter) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// Cleanup iterates through the rate limiter's request map and removes entries
+// for IPs that have no recent requests.
+func Cleanup(l *types.RateLimiter) {
+	l.Mutex.Lock()
+	defer l.Mutex.Unlock()
+
+	for ip, requests := range l.Requests {
+		if len(requests) == 0 {
+			delete(l.Requests, ip)
+		}
+	}
+}
