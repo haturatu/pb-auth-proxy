@@ -1,6 +1,7 @@
 package main
 
 import (
+	"auth-proxy/config"
 	"auth-proxy/database"
 	"auth-proxy/logging"
 	"auth-proxy/models"
@@ -16,10 +17,11 @@ func main() {
 	// Initialize logging
 	logging.InitLoggers()
 
-	// Load .env file
+	// Load .env file and initialize config
 	if err := godotenv.Load(); err != nil {
 		logging.AppLog.Info("No .env file found, using environment variables")
 	}
+	config.Init()
 
 	username := flag.String("username", "", "Username for the new admin user")
 	password := flag.String("password", "", "Password for the new admin user")

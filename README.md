@@ -4,6 +4,12 @@ This is a simple authenticating reverse proxy written in Go. It provides a flexi
 
 It handles user registration, login, and session management, and proxies authenticated requests to the configured backend. It also includes an administration dashboard for user management.
 
+## Try the Demo
+```bash
+chmod +x run-demo.sh
+bash run-demo.sh
+```
+
 ## Why I Built This
 
 I'm also the developer of [puremania](https://github.com/haturatu/puremania), and I wanted to avoid adding complex authentication logic to that project.
