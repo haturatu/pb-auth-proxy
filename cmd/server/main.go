@@ -186,9 +186,18 @@ func main() {
 	// In production, you should set csrf.Secure(true).
 	// You can use an environment variable to control this setting.
 	csrfOptions := []csrf.Option{
-		csrf.Secure(true), // Set to true in production
+		csrf.Secure(os.Getenv("ENV") == "production"),
 		csrf.Path("/"),
 	}
+
+	sameSiteMode := csrf.SameSiteLaxMode
+	switch strings.ToLower(os.Getenv("CSRF_SAME_SITE")) {
+	case "strict":
+		sameSiteMode = csrf.SameSiteStrictMode
+	case "none":
+		sameSiteMode = csrf.SameSiteNoneMode
+	}
+	csrfOptions = append(csrfOptions, csrf.SameSite(sameSiteMode))
 
 	trustedOrigins := os.Getenv("CSRF_TRUSTED_ORIGINS")
 	if trustedOrigins != "" {
