@@ -5,7 +5,7 @@
 ユーザー登録、ログイン、セッション管理を処理し、認証されたリクエストを設定済みのバックエンドにプロキシします。また、ユーザー管理のための管理ダッシュボードも含まれています。
 
 ## なぜ作ったか
-私の作成している  
+私の作成しているものがありますが  
 [GitHub - haturatu/puremania: No security, very fast, web UI self-hosted online storage](https://github.com/haturatu/puremania)  
 がありますが、これに複雑になりがちな認証機能を持たせなくなかったからです。  
 また、一つのアプリケーションに認証を組み込むとセキュリティ上は良いですがID/Passwordなどをそれぞれに合わせて作成する必要がありとても面倒です。  
@@ -99,7 +99,7 @@ APIリクエストの場合、クライアントは`Authorization: Bearer <token
 
 1.  **リポジトリをクローン:**
     ```sh
-    git clone <repository-url>
+    git clone https://github.com/haturatu/auth-proxy/tree/main
     cd auth-proxy
     ```
 

@@ -101,7 +101,7 @@ For API requests, the client must include the JWT Access Token in the `Authoriza
 
 1.  **Clone the repository:**
     ```sh
-    git clone <repository-url>
+    git clone https://github.com/haturatu/auth-proxy/tree/main
     cd auth-proxy
     ```
 
