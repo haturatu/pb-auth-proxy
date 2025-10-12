@@ -126,6 +126,10 @@ TARGET_URL=http://localhost:8081
 # 本番環境では、openssl rand -base64 45 を使って新しいキーを生成してください
 SESSION_SECRET=my-super-secret-key
 
+# (必須) CSRF保護のための32バイトのランダムなキー。
+# 生成コマンド: openssl rand -base64 32
+CSRF_SECRET_KEY=
+
 # --- データベース ---
 # 以下のいずれかのオプションを使用してください:
 
@@ -479,6 +483,6 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/config
 | `AUTH_PATH_*` | ログイン、管理者ページなどの内部URLをカスタマイズするための変数セット。 | 様々、例: `/login`|
 | `AUTH_ASSETS_PATH` | 内部静的アセット（CSS, JS）を提供するためのURLパス。 | `/assets` |
 | `ENV` | ランタイム環境。セキュアなクッキーを有効にするには`production`に設定します。 | - |
-| `CSRF_SECRET_KEY` | **(必須)** CSRF保護のための長くてランダムな秘密鍵。 | - |
+| `CSRF_SECRET_KEY` | **(必須)** CSRF保護のための32バイトのランダムなキー。`openssl rand -base64 32` で生成します。 | - |
 | `CSRF_TRUSTED_ORIGINS` | CSRF保護のための信頼できるオリジンのカンマ区切りリスト。 | - |
 | `CSRF_SAME_SITE` | CSRFクッキーのSameSite属性。`lax`、`strict`、または`none`にすることができます。 | `lax` |

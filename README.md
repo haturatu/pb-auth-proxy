@@ -120,9 +120,14 @@ LISTEN_PORT=8080
 # --- Required ---
 # The URL of the backend service you want to protect
 TARGET_URL=http://localhost:8081
+
 # A long, random string for securing session cookies and JWTs
 # For production, generate a new key using: openssl rand -base64 45
 SESSION_SECRET=my-super-secret-key
+
+# (Required) A 32-byte random key for CSRF protection.
+# Generate with: openssl rand -base64 32
+CSRF_SECRET_KEY=
 
 # --- Database --- 
 # Use ONE of the following options:
@@ -477,6 +482,6 @@ The base path for these endpoints is `/api/admin/users`, which can be customized
 | `AUTH_PATH_*` | A set of variables to customize the internal URLs for login, admin, etc. | Various, e.g., `/login`|
 | `AUTH_ASSETS_PATH` | The URL path for serving internal static assets (CSS, JS). | `/assets` |
 | `ENV` | The runtime environment. Set to `production` to enable secure cookies. | - |
-| `CSRF_SECRET_KEY` | **(Required)** A long, random secret key for CSRF protection. | - |
+| `CSRF_SECRET_KEY` | **(Required)** A 32-byte random key for CSRF protection. Generate with `openssl rand -base64 32`. | - |
 | `CSRF_TRUSTED_ORIGINS` | A comma-separated list of trusted origins for CSRF protection. | - |
 | `CSRF_SAME_SITE` | The SameSite attribute for the CSRF cookie. Can be `lax`, `strict`, or `none`. | `lax` |
