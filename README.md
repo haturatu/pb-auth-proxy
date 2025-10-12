@@ -28,6 +28,18 @@ This project aims to solve that by acting as a central authentication service. B
 
 ## Security and Authentication Details
 
+### CSRF Protection
+
+The proxy includes CSRF (Cross-Site Request Forgery) protection to prevent malicious attacks. This is implemented using the `gorilla/csrf` library.
+
+When a user visits a page with a form, a unique CSRF token is generated and embedded in the form. When the form is submitted, the server checks if the token matches the one stored in the user's session. If they don't match, the request is rejected.
+
+This protection is enabled by default. You can configure it using the following environment variables:
+
+- `CSRF_SECRET_KEY`: A long, random secret key used to sign the CSRF tokens.
+- `CSRF_TRUSTED_ORIGINS`: A comma-separated list of trusted origins. If your frontend is hosted on a different domain than the proxy, you must add the frontend's origin to this list.
+- `CSRF_SAME_SITE`: The `SameSite` attribute for the CSRF cookie. It can be set to `lax` (default), `strict`, or `none`. If you set it to `none`, you must also set `ENV=production` to enable secure cookies.
+
 ### Password Encryption
 
 User passwords are never stored in plaintext. They are securely hashed using the **bcrypt** algorithm, a strong, adaptive hashing function designed specifically for passwords. When a user logs in, the provided password is
@@ -357,3 +369,7 @@ The `refresh_token` is a long-lived token that can be used to obtain a new acces
 | `REGISTER` | If set to `false`, disables new user registration. | `true` |
 | `AUTH_PATH_*` | A set of variables to customize the internal URLs for login, admin, etc. | Various, e.g., `/login`|
 | `AUTH_ASSETS_PATH` | The URL path for serving internal static assets (CSS, JS). | `/assets` |
+| `ENV` | The runtime environment. Set to `production` to enable secure cookies. | - |
+| `CSRF_SECRET_KEY` | **(Required)** A long, random secret key for CSRF protection. | - |
+| `CSRF_TRUSTED_ORIGINS` | A comma-separated list of trusted origins for CSRF protection. | - |
+| `CSRF_SAME_SITE` | The SameSite attribute for the CSRF cookie. Can be `lax`, `strict`, or `none`. | `lax` |
