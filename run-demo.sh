@@ -14,11 +14,13 @@ cleanup() {
 trap cleanup EXIT
 
 echo "--> Creating .env file"
+IP_ADDRESS=$(ip -4 address | grep inet | grep -v 127.0.0.1 | awk '{print $2}' | cut -d/ -f1 | head -n1)
 cat > .env << EOF
 LISTEN_PORT=8080
-TARGET_URL=http://localhost:8081
+TARGET_URL=http://127.0.0.1:8081
 SESSION_SECRET=$(openssl rand -base64 32)
 CSRF_SECRET_KEY=$(openssl rand -base64 32)
+CSRF_TRUSTED_ORIGINS=${IP_ADDRESS}:8080
 DATABASE_PATH=./auth.db
 PROTECT_API=true
 PROTECT_FRONTEND=true
@@ -55,8 +57,8 @@ echo ""
 echo "API Token Response:"
 echo "$TOKEN_RESPONSE"
 echo "==================================="
-echo "Proxy is listening on http://localhost:8080/login"
-echo "Backend target is http://localhost:8081"
+echo "Proxy is listening on http://${IP_ADDRESS}:8080/login"
+echo "Backend target is http://127.0.0.1:8081"
 echo ""
 echo "Press Ctrl+C to stop the server."
 
