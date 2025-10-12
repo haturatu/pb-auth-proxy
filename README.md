@@ -341,6 +341,95 @@ The `refresh_token` is a long-lived token that can be used to obtain a new acces
 
 **Note:** The token lifetimes can be configured in your `.env` file. See the configuration table for details.
 
+## Admin API Endpoints
+
+For administrative tasks, the proxy provides several API endpoints that can be accessed programmatically. All of these endpoints require a valid Bearer Token from a user with the `admin` role.
+
+The base path for these endpoints is `/api/admin/users`, which can be customized with the `AUTH_PATH_ADMIN_USERS_API` environment variable.
+
+### List Users
+
+- **Endpoint**: `GET /api/admin/users`
+- **Description**: Retrieves a list of all users in the system.
+- **Example**:
+  ```sh
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/admin/users
+  ```
+
+### Create User
+
+- **Endpoint**: `POST /api/admin/users`
+- **Description**: Creates a new user.
+- **Body**:
+  ```json
+  {
+    "username": "newuser",
+    "password": "a-strong-password",
+    "role": "user"
+  }
+  ```
+- **Example**:
+  ```sh
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
+       -H "Content-Type: application/json" \
+       -d '{"username": "newuser", "password": "Password123", "role": "user"}' \
+       http://localhost:8080/api/admin/users
+  ```
+
+### Update User Role
+
+- **Endpoint**: `POST /api/admin/users/{id}/role`
+- **Description**: Updates the role of a specific user by their ID.
+- **Body**:
+  ```json
+  {
+    "role": "admin"
+  }
+  ```
+- **Example**:
+  ```sh
+  USER_ID=2
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
+       -H "Content-Type: application/json" \
+       -d '{"role": "admin"}' \
+       http://localhost:8080/api/admin/users/$USER_ID/role
+  ```
+
+### Update User Status
+
+- **Endpoint**: `POST /api/admin/users/{id}/status`
+- **Description**: Activates or deactivates a user by their ID.
+- **Body**:
+  ```json
+  {
+    "is_active": false
+  }
+  ```
+- **Example**:
+  ```sh
+  USER_ID=2
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
+       -H "Content-Type: application/json" \
+       -d '{"is_active": false}' \
+       http://localhost:8080/api/admin/users/$USER_ID/status
+  ```
+
+### Delete User
+
+- **Endpoint**: `DELETE /api/admin/users/{id}`
+- **Description**: Deletes a user by their ID.
+- **Example**:
+  ```sh
+  USER_ID=2
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -X DELETE -H "Authorization: Bearer $ACCESS_TOKEN" \
+       http://localhost:8080/api/admin/users/$USER_ID
+  ```
+
 ## Configuration Details
 
 | Environment Variable | Description | Default Value |

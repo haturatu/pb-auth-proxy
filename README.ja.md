@@ -343,6 +343,95 @@ Authorization: Bearer <access_token>
 
 **注意:** トークンの有効期間は `.env` ファイルで設定できます。詳細は設定表を参照してください。
 
+## 管理APIエンドポイント
+
+管理タスクのために、プロキシはプログラムからアクセス可能なAPIエンドポイントをいくつか提供しています。これらのエンドポイントはすべて、`admin`ロールを持つユーザーの有効なベアラートークンが必要です。
+
+これらのエンドポイントのベースパスは `/api/admin/users` であり、これは `AUTH_PATH_ADMIN_USERS_API` 環境変数でカスタマイズ可能です。
+
+### ユーザー一覧の取得
+
+- **エンドポイント**: `GET /api/admin/users`
+- **説明**: システム内の全ユーザーのリストを取得します。
+- **例**:
+  ```sh
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/admin/users
+  ```
+
+### ユーザーの作成
+
+- **エンドポイント**: `POST /api/admin/users`
+- **説明**: 新しいユーザーを作成します。
+- **ボディ**:
+  ```json
+  {
+    "username": "newuser",
+    "password": "a-strong-password",
+    "role": "user"
+  }
+  ```
+- **例**:
+  ```sh
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
+       -H "Content-Type: application/json" \
+       -d '{"username": "newuser", "password": "Password123", "role": "user"}' \
+       http://localhost:8080/api/admin/users
+  ```
+
+### ユーザーロールの更新
+
+- **エンドポイント**: `POST /api/admin/users/{id}/role`
+- **説明**: IDで指定された特定のユーザーのロールを更新します。
+- **ボディ**:
+  ```json
+  {
+    "role": "admin"
+  }
+  ```
+- **例**:
+  ```sh
+  USER_ID=2
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
+       -H "Content-Type: application/json" \
+       -d '{"role": "admin"}' \
+       http://localhost:8080/api/admin/users/$USER_ID/role
+  ```
+
+### ユーザーステータスの更新
+
+- **エンドポイント**: `POST /api/admin/users/{id}/status`
+- **説明**: IDで指定されたユーザーを有効化または無効化します。
+- **ボディ**:
+  ```json
+  {
+    "is_active": false
+  }
+  ```
+- **例**:
+  ```sh
+  USER_ID=2
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
+       -H "Content-Type: application/json" \
+       -d '{"is_active": false}' \
+       http://localhost:8080/api/admin/users/$USER_ID/status
+  ```
+
+### ユーザーの削除
+
+- **エンドポイント**: `DELETE /api/admin/users/{id}`
+- **説明**: IDで指定されたユーザーを削除します。
+- **例**:
+  ```sh
+  USER_ID=2
+  ACCESS_TOKEN="your_admin_access_token"
+  curl -X DELETE -H "Authorization: Bearer $ACCESS_TOKEN" \
+       http://localhost:8080/api/admin/users/$USER_ID
+  ```
+
 ## 設定詳細
 
 | 環境変数 | 説明 | デフォルト値 |
