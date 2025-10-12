@@ -15,6 +15,7 @@
     - [Session Management](#session-management)
       - [Web UI Sessions](#web-ui-sessions)
       - [API Sessions (Stateless with JWT)](#api-sessions-stateless-with-jwt)
+    - [Transport Layer Security (HTTPS)](#transport-layer-security-https)
   - [Getting Started](#getting-started)
     - [Prerequisites](#prerequisites)
     - [Installation](#installation)
