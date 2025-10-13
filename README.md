@@ -135,10 +135,7 @@
   
   For production environments, it is **critical** to run this proxy behind a TLS-terminating reverse proxy (like Nginx, Caddy, or a cloud load balancer).
   
-  This application does not handle HTTPS termination itself. By default, it communicates over HTTP. If you deploy it without a secure proxy in front, sensitive data like user passwords sent during login could be intercepted in a Man-in-the-Middle (MITM) attack.
-  
-  Ensure that all traffic between clients and this proxy is encrypted via HTTPS.
-  
+  This application does not handle HTTPS termination itself. By default, it communicates over HTTP. If you deploy it without a secure proxy in front, sensitive data like user passwords sent during login could be intercepted in a Man-in-the-Middle (MITM) attack. However, MITM attacks are realistically difficult and usually require the attacker to be on the same network. An easy way to prevent this is to place the backend application and this authentication proxy behind an HTTP server like Nginx. This effectively wraps the communication in TLS, though it is not a complete solution.  
   ## Getting Started
   
   ### Prerequisites
