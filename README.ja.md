@@ -146,7 +146,7 @@ APIリクエストの場合、クライアントは`Authorization: Bearer <token
 
 1.  **リポジトリをクローン:**
     ```sh
-    git clone https://github.com/haturatu/auth-proxy/tree/main
+    git clone https://github.com/haturatu/auth-proxy
     cd auth-proxy
     ```
 

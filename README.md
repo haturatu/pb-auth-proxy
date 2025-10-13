@@ -151,7 +151,7 @@
   
   1.  **Clone the repository:**
       ```sh
-      git clone https://github.com/haturatu/auth-proxy/tree/main
+      git clone https://github.com/haturatu/auth-proxy
       cd auth-proxy
       ```
   
