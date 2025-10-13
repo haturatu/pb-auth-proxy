@@ -7,7 +7,6 @@ import (
 	"auth-proxy/worker"
 	"bytes"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -41,7 +40,7 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 		defer fcgi.Close()
 
 		env := make(map[string]string)
-		
+
 		var scriptFilename string
 		var finalDocRoot string
 
@@ -82,7 +81,6 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 		// Pass XSRF token to PHP
 		env["HTTP_X_XSRF_TOKEN"] = middleware.GetXSRFToken(r)
 
-
 		// Asynchronously log the proxying action to avoid blocking the request.
 		worker.Submit(workerPool, func() {
 			logging.AppLog.Debug("Proxying to PHP-FPM", "script_filename", scriptFilename, "doc_root", finalDocRoot)
@@ -96,13 +94,13 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 		env["REQUEST_URI"] = r.RequestURI
 		env["SCRIPT_NAME"] = r.URL.Path
 		for name, headers := range r.Header {
-			name = "HTTP_" + strings.ToUpper(strings.Replace(name, "-", "_", -1))
+			name = "HTTP_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 			env[name] = strings.Join(headers, ", ")
 		}
 
 		var body io.Reader
 		if r.Body != nil {
-			bodyBytes, _ := ioutil.ReadAll(r.Body)
+			bodyBytes, _ := io.ReadAll(r.Body)
 			env["CONTENT_LENGTH"] = strconv.Itoa(len(bodyBytes))
 			body = bytes.NewReader(bodyBytes)
 		} else {
@@ -112,12 +110,12 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 
 		resp, err := fcgi.Request(env, body)
 		if err != nil {
-		ip := logging.GetClientIP(r)
-		errStr := err.Error()
-		worker.Submit(workerPool, func() {
-			logging.AppLog.Error("FastCGI request failed", "error", errStr, "ip", ip)
-		})
-		http.Error(w, "FastCGI request failed: "+err.Error(), http.StatusInternalServerError)
+			ip := logging.GetClientIP(r)
+			errStr := err.Error()
+			worker.Submit(workerPool, func() {
+				logging.AppLog.Error("FastCGI request failed", "error", errStr, "ip", ip)
+			})
+			http.Error(w, "FastCGI request failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -127,10 +125,10 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 				w.Header().Add(k, v)
 			}
 		}
-		
+
 		// Check for PHP errors communicated via status header (a common pattern)
 		if status := resp.Header.Get("Status"); strings.HasPrefix(status, "404") {
-			http.NotFound(w,r)
+			http.NotFound(w, r)
 			return
 		}
 
@@ -141,6 +139,8 @@ func NewPhpProxyHandler(scriptName string) http.Handler {
 		w.WriteHeader(statusCode)
 
 		// Copy body
-		io.Copy(w, resp.Body)
+		if _, err := io.Copy(w, resp.Body); err != nil {
+			logging.AppLog.Error("Failed to copy response body from PHP-FPM", "error", err)
+		}
 	})
 }

@@ -252,5 +252,7 @@ func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(user)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		logging.AppLog.Error("Failed to encode user to JSON", "error", err, "ip", ip)
+	}
 }
