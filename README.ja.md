@@ -55,6 +55,8 @@
 
 ## おためし
 ```bash
+git clone https://github.com/haturatu/auth-proxy.git
+cd auth-proxy
 chmod +x run-demo.sh
 bash run-demo.sh
 ```
