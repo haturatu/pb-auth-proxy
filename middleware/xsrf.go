@@ -5,8 +5,9 @@ import (
 	"encoding/base64"
 	"net/http"
 	"os"
+	"time"
 
-	"golang.org/x/net/xsrftoken"
+	"github.com/haturatu/xsrftoken"
 )
 
 const (
@@ -40,7 +41,7 @@ func XSRF(next http.Handler) http.Handler {
 				clientToken = r.FormValue(xsrfFormField)
 			}
 
-			if !xsrftoken.Valid(clientToken, string(xsrfSecret), sessionID, r.URL.Path) {
+			if !xsrftoken.ValidFor(clientToken, string(xsrfSecret), sessionID, r.URL.Path, 15*time.Minute) {
 				http.Error(w, "Invalid XSRF token", http.StatusForbidden)
 				return
 			}
