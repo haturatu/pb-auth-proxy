@@ -53,9 +53,23 @@
   ```bash
   git clone https://github.com/haturatu/auth-proxy.git
   cd auth-proxy
-  chmod +x run-demo.sh
-  bash run-demo.sh
+  cp .env.example .env
+  docker compose up --build
   ```
+
+  Local demo endpoints:
+
+  - Proxy login: `http://localhost:8080/login`
+  - PocketBase admin API: `http://localhost:8090/_/`
+  - Seeded proxy admin login: `admin` / `password123`
+  - `docker compose` reads variables from the repo-root `.env`
+
+  PocketBase collection requirements:
+
+  - Use an auth collection.
+  - Enable password authentication.
+  - Ensure the auth collection has a unique `username` identity field if you keep the default `POCKETBASE_IDENTITY_FIELD=username`.
+  - Add custom fields `role` (text), `is_active` (bool), `failed_logins` (number), and `last_login_at` (date).
   
   ## Why I Built This
   
@@ -68,7 +82,7 @@
   - **Authentication**: Provides login, logout, and registration pages.
   - **Reverse Proxy**: Proxies authenticated users to a backend service.
   - **Admin Dashboard**: A simple UI to manage users (update roles, activate/deactivate, delete).
-  - **Flexible Database Support**: Works with PostgreSQL, MySQL, and SQLite.
+  - **PocketBase Backend**: User records, admin operations, and credential checks are delegated to a PocketBase auth collection.
   - **Pluggable Frontend**: Supports multiple frontend modes (JS-driven or PHP).
   - **Security Hardening**:
       - **Brute-force Protection**: Locks user accounts after a configurable number of failed login attempts. This protection applies to both the web UI login and the `/api/auth/token` endpoint.
@@ -107,8 +121,8 @@
   This flow is designed for users interacting with the application through a web browser.
   
   1.  A user submits their username and password via the login page.
-  2.  The server validates the credentials against the database.
-  3.  On success, a cryptographically secure, random token is generated and stored in the database, associated with the user.
+  2.  The server validates the credentials against PocketBase.
+  3.  On success, the proxy issues its own signed session JWT.
   4.  This token is sent to the user's browser in a secure, `HttpOnly` cookie named `auth_token`, establishing a session.
   
   #### 2. API (JWT-Based)
@@ -119,13 +133,13 @@
   2.  The server validates the credentials.
   3.  On success, it generates and returns two tokens:
       *   A short-lived **JWT Access Token** containing user claims (ID, role) and an expiration time. This token is signed to prevent tampering.
-      *   A long-lived **Refresh Token** that is stored in the database and can be used to obtain a new access token.
+      *   A long-lived **Refresh Token** issued by the proxy and used to mint a new access token.
   
   ### Session Management
   
   #### Web UI Sessions
   
-  For subsequent requests from a browser, the `auth_token` cookie is automatically sent to the server. A middleware validates this token by looking it up in the database. If the token is valid and has not expired, the request is authenticated and allowed to proceed. When a user logs out, the session token is deleted from the database, effectively invalidating the session.
+  For subsequent requests from a browser, the `auth_token` cookie is automatically sent to the server. A middleware validates the JWT signature and expiration, then loads the current user from PocketBase before allowing the request.
   
   #### API Sessions (Stateless with JWT)
   
@@ -144,7 +158,7 @@
   
   - Go 1.21 or later
   - (Optional) A running PHP-FPM service if you intend to use the PHP frontend.
-  - (Optional) PostgreSQL or MySQL database server.
+  - A running PocketBase instance with an auth collection for proxy users.
   
   ### Installation
   
@@ -187,16 +201,18 @@
   # Generate with: openssl rand -base64 32
   XSRF_SECRET_KEY=
   
-  # --- Database ---
-  # Use ONE of the following options:
-  
-  # Option 1: PostgreSQL or MySQL (Recommended)
-  # Example: postgres://user:password@host:port/dbname?sslmode=disable
-  # Example: mysql://user:password@tcp(host:port)/dbname?charset=utf8mb4&parseTime=true
-  DATABASE_URL=mysql://test:test@127.0.0.1:3306/auth
-  
-  # Option 2: SQLite (Default if DATABASE_URL is not set)
-  # DATABASE_PATH=./auth.db
+  # --- PocketBase ---
+  # PocketBase base URL
+  POCKETBASE_URL=http://127.0.0.1:8090
+  # Auth collection used for proxy users
+  POCKETBASE_COLLECTION=proxy_users
+  # Username is the expected login field by default
+  POCKETBASE_IDENTITY_FIELD=username
+  # Superuser credentials used by the proxy for admin/user management
+  POCKETBASE_SUPERUSER_EMAIL=admin@example.com
+  POCKETBASE_SUPERUSER_PASSWORD=change-me
+  # Optional domain used to synthesize internal email addresses when usernames are not emails
+  POCKETBASE_EMAIL_DOMAIN=pb-auth.local
   
   # --- Frontend & Proxy ---
   # Frontend mode: "js" (default) or "php"

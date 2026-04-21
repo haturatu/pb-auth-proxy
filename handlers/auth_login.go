@@ -50,8 +50,8 @@ func authenticateUser(username, password, ip string) (*types.User, error) {
 		}
 	}
 
-	// Step 2: If the account is active, validate credentials.
-	if !models.CheckPasswordHash(password, user.PasswordHash) {
+	// Step 2: If the account is active, validate credentials against PocketBase.
+	if _, err := models.AuthenticateWithPassword(username, password); err != nil {
 		// Record the failure
 		if err := models.RecordLoginFailure(user.ID); err != nil {
 			logging.AppLog.Error("Failed to record login failure", "error", err, "user_id", user.ID, "ip", ip)
@@ -62,7 +62,7 @@ func authenticateUser(username, password, ip string) (*types.User, error) {
 		maxAttempts := config.Paths.MaxLoginAttempts
 
 		// Lock the account if max attempts are exceeded
-		if maxAttempts > 0 && updatedUser.FailedLogins >= maxAttempts {
+		if updatedUser != nil && maxAttempts > 0 && updatedUser.FailedLogins >= maxAttempts {
 			if err := models.SetUserActiveStatus(user.ID, false); err != nil {
 				logging.AppLog.Error("Failed to lock account", "error", err, "user_id", user.ID, "ip", ip)
 			}
@@ -76,6 +76,9 @@ func authenticateUser(username, password, ip string) (*types.User, error) {
 	// Step 3: Login successful.
 	if err := models.RecordLoginSuccess(user.ID); err != nil {
 		logging.AppLog.Error("Failed to record login success", "error", err, "user_id", user.ID, "ip", ip)
+	}
+	if refreshedUser, refreshErr := models.GetUserByID(user.ID); refreshErr == nil && refreshedUser != nil {
+		user = refreshedUser
 	}
 	logging.SecurityLog.Info("AUTH SUCCESS", "username", user.Username, "ip", ip)
 
@@ -148,7 +151,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// --- Create Session Cookie ---
 		duration := time.Duration(config.Paths.TokenDurationHours) * time.Hour
 
-		token, err := models.CreateAuthToken(user.ID, duration)
+		token, err := models.CreateAuthToken(user, duration)
 		if err != nil {
 			logging.AppLog.Error("Failed to create auth token", "error", err, "username", user.Username, "ip", ip)
 			renderLoginWithError(w, r, "Could not create session.")

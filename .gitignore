@@ -7,3 +7,11 @@ auth.db
 
 # .env file
 .env
+
+# Local PocketBase / Docker data
+pb_data/
+tmp/
+
+# Local tooling
+.codex/
+.codex

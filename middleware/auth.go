@@ -7,7 +7,6 @@ import (
 	"auth-proxy/types"
 	"auth-proxy/utils"
 	"context"
-	"database/sql"
 	"net/http"
 	"strings"
 )
@@ -32,8 +31,8 @@ func SessionAuth(next http.Handler) http.Handler {
 		}
 
 		tokenStr := cookie.Value
-		user, err := models.GetUserByToken(tokenStr) // This still relies on the session token in the DB
-		if err != nil && err != sql.ErrNoRows {
+		user, err := models.GetUserByToken(tokenStr)
+		if err != nil {
 			logging.AppLog.Error("Error validating session token", "error", err, "path", r.URL.Path, "ip", ip)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
@@ -85,9 +84,15 @@ func BearerAuth(next http.Handler) http.Handler {
 				return
 			}
 
+			if payload.TokenType != "access" {
+				logging.SecurityLog.Warn("API ACCESS DENIED", "reason", "unexpected token type", "token_type", payload.TokenType, "path", r.URL.Path, "ip", ip)
+				http.Error(w, "Unauthorized: Invalid token type", http.StatusUnauthorized)
+				return
+			}
+
 			user, err := models.GetUserByID(payload.UserID)
 			if err != nil || user == nil {
-				if err == sql.ErrNoRows || user == nil {
+				if user == nil {
 					logging.SecurityLog.Error("API ACCESS DENIED", "reason", "user from token not found", "user_id", payload.UserID, "path", r.URL.Path, "ip", ip)
 					http.Error(w, "Unauthorized: User not found", http.StatusUnauthorized)
 				} else {

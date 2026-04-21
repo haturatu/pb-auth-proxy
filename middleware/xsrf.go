@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/haturatu/xsrftoken"
+	"golang.org/x/net/xsrftoken"
 )
 
 const (

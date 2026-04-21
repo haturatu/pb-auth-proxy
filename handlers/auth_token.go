@@ -49,7 +49,7 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Issue a new access token
-	newAccessToken, err := utils.GenerateJWT(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute)
+	newAccessToken, err := utils.GenerateJWT(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute, "access")
 	if err != nil {
 		logging.AppLog.Error("Failed to generate new access token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -64,7 +64,7 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 6. Issue a new refresh token
-	newRefreshToken, err := models.CreateRefreshToken(user.ID, time.Duration(config.Paths.RefreshTokenDurationDays)*24*time.Hour)
+	newRefreshToken, err := models.CreateRefreshToken(user, time.Duration(config.Paths.RefreshTokenDurationDays)*24*time.Hour)
 	if err != nil {
 		logging.AppLog.Error("Failed to create new refresh token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -111,7 +111,7 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	// --- Issue Tokens ---
 	// Access Token
-	accessToken, err := utils.GenerateJWT(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute)
+	accessToken, err := utils.GenerateJWT(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute, "access")
 	if err != nil {
 		logging.AppLog.Error("Failed to generate access token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
@@ -119,7 +119,7 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refresh Token
-	refreshToken, err := models.CreateRefreshToken(user.ID, time.Duration(config.Paths.RefreshTokenDurationDays)*24*time.Hour)
+	refreshToken, err := models.CreateRefreshToken(user, time.Duration(config.Paths.RefreshTokenDurationDays)*24*time.Hour)
 	if err != nil {
 		logging.AppLog.Error("Failed to create refresh token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Failed to create refresh token", http.StatusInternalServerError)

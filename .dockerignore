@@ -1,0 +1,8 @@
+.git
+.codex
+auth.db
+admin-cli
+auth-proxy-server
+pb_data
+tmp
+node_modules

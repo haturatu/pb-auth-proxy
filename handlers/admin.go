@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -43,8 +42,6 @@ func AdminPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
-
 // GetUsersHandler returns a list of all users with enriched information.
 // It uses a worker pool to calculate extra information for each user in parallel.
 func GetUsersHandler(w http.ResponseWriter, r *http.Request) {
@@ -71,8 +68,8 @@ func GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(5 * time.Millisecond)
 
 			timeSinceLogin := "N/A"
-			if userCopy.LastLoginAt.Valid {
-				timeSinceLogin = fmt.Sprintf("%.0fm ago", time.Since(userCopy.LastLoginAt.Time).Minutes())
+			if userCopy.LastLoginAt != nil {
+				timeSinceLogin = fmt.Sprintf("%.0fm ago", time.Since(*userCopy.LastLoginAt).Minutes())
 			}
 
 			enrichedUsers[index] = types.EnrichedUser{
@@ -103,8 +100,8 @@ func UpdateUserRoleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	adminUsername := adminUser.Username
 
-	id, err := strconv.ParseInt(r.URL.Path[len(config.Paths.AdminUsersAPI+"/"):len(r.URL.Path)-len("/role")], 10, 64)
-	if err != nil {
+	id := r.URL.Path[len(config.Paths.AdminUsersAPI+"/") : len(r.URL.Path)-len("/role")]
+	if id == "" {
 		logging.AppLog.Warn("Invalid user ID in request", "path", r.URL.Path, "ip", ip)
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
@@ -148,8 +145,8 @@ func DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	adminUsername := adminUser.Username
 
-	id, err := strconv.ParseInt(r.URL.Path[len(config.Paths.AdminUsersAPI+"/"):], 10, 64)
-	if err != nil {
+	id := r.URL.Path[len(config.Paths.AdminUsersAPI+"/"):]
+	if id == "" {
 		logging.AppLog.Warn("Invalid user ID in request", "path", r.URL.Path, "ip", ip)
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
@@ -177,8 +174,8 @@ func SetUserActiveStatusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	adminUsername := adminUser.Username
 
-	id, err := strconv.ParseInt(r.URL.Path[len(config.Paths.AdminUsersAPI+"/"):len(r.URL.Path)-len("/status")], 10, 64)
-	if err != nil {
+	id := r.URL.Path[len(config.Paths.AdminUsersAPI+"/") : len(r.URL.Path)-len("/status")]
+	if id == "" {
 		logging.AppLog.Warn("Invalid user ID in request", "path", r.URL.Path, "ip", ip)
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return

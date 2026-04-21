@@ -38,11 +38,11 @@
                         </td>
                         <td>{{if .IsActive}}Yes{{else}}No{{end}}</td>
                         <td>{{.FailedLogins}}</td>
-                        <td>{{if .LastLoginAt.Valid}}{{.LastLoginAt.Time.Format "2006-01-02 15:04"}}{{else}}Never{{end}}</td>
+                        <td>{{if .LastLoginAt}}{{.LastLoginAt.Format "2006-01-02 15:04"}}{{else}}Never{{end}}</td>
                         <td>
-                            <button onclick="updateRole({{.ID}})">Save Role</button>
-                            <button onclick="toggleActive({{.ID}}, {{not .IsActive}})">{{if .IsActive}}Deactivate{{else}}Activate{{end}}</button>
-                            <button class="delete" onclick="deleteUser({{.ID}})">Delete</button>
+                            <button onclick="updateRole({{printf "%q" .ID}})">Save Role</button>
+                            <button onclick="toggleActive({{printf "%q" .ID}}, {{not .IsActive}})">{{if .IsActive}}Deactivate{{else}}Activate{{end}}</button>
+                            <button class="delete" onclick="deleteUser({{printf "%q" .ID}})">Delete</button>
                         </td>
                     </tr>
                     {{end}}

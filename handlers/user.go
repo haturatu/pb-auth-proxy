@@ -83,16 +83,7 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		dbUser, err := models.GetUserByID(user.ID)
-		if err != nil || dbUser == nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			if err := json.NewEncoder(w).Encode(map[string]string{"error": "Could not retrieve user data."}); err != nil {
-				logging.AppLog.Error("Failed to encode json error response", "error", err)
-			}
-			return
-		}
-
-		if !models.CheckPasswordHash(currentPassword, dbUser.PasswordHash) {
+		if _, err := models.AuthenticateWithPassword(user.Username, currentPassword); err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			if err := json.NewEncoder(w).Encode(map[string]string{"error": "Current password is incorrect."}); err != nil {
 				logging.AppLog.Error("Failed to encode json error response", "error", err)
@@ -100,16 +91,7 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		newPasswordHash, err := models.HashPassword(newPassword)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			if err := json.NewEncoder(w).Encode(map[string]string{"error": "Failed to process new password."}); err != nil {
-				logging.AppLog.Error("Failed to encode json error response", "error", err)
-			}
-			return
-		}
-
-		if err := models.UpdateUserPassword(dbUser.ID, newPasswordHash); err != nil {
+		if err := models.ChangeUserPassword(user.ID, currentPassword, newPassword); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			if err := json.NewEncoder(w).Encode(map[string]string{"error": "Failed to update password."}); err != nil {
 				logging.AppLog.Error("Failed to encode json error response", "error", err)

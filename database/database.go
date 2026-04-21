@@ -2,270 +2,256 @@ package database
 
 import (
 	"auth-proxy/logging"
-	"database/sql"
+	"bytes"
+	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
-
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
+	"sync"
+	"time"
 )
 
-var (
-	DB     *sql.DB
-	dbType string
-)
+type Client struct {
+	baseURL       string
+	collection    string
+	identityField string
+	emailDomain   string
+	superEmail    string
+	superPassword string
+	httpClient    *http.Client
 
-// InitDB determines the database type from environment variables and initializes the connection.
+	mu         sync.Mutex
+	superToken string
+}
+
+type apiListResponse[T any] struct {
+	Items []T `json:"items"`
+}
+
+type userAuthResponse[T any] struct {
+	Token  string `json:"token"`
+	Record T      `json:"record"`
+}
+
+var PB *Client
+
 func InitDB() {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL != "" {
-		initFromURL(databaseURL)
-	} else {
-		dbType = "sqlite3"
-		initSQLite()
+	baseURL := strings.TrimRight(os.Getenv("POCKETBASE_URL"), "/")
+	if baseURL == "" {
+		logging.AppLog.Error("POCKETBASE_URL environment variable not set")
+		os.Exit(1)
 	}
-	createTables()
+
+	superEmail := os.Getenv("POCKETBASE_SUPERUSER_EMAIL")
+	superPassword := os.Getenv("POCKETBASE_SUPERUSER_PASSWORD")
+	if superEmail == "" || superPassword == "" {
+		logging.AppLog.Error("PocketBase superuser credentials are required", "missing_email", superEmail == "", "missing_password", superPassword == "")
+		os.Exit(1)
+	}
+
+	collection := os.Getenv("POCKETBASE_COLLECTION")
+	if collection == "" {
+		collection = "proxy_users"
+	}
+
+	identityField := os.Getenv("POCKETBASE_IDENTITY_FIELD")
+	if identityField == "" {
+		identityField = "username"
+	}
+
+	emailDomain := os.Getenv("POCKETBASE_EMAIL_DOMAIN")
+	if emailDomain == "" {
+		emailDomain = "pb-auth.local"
+	}
+
+	PB = &Client{
+		baseURL:       baseURL,
+		collection:    collection,
+		identityField: identityField,
+		emailDomain:   emailDomain,
+		superEmail:    superEmail,
+		superPassword: superPassword,
+		httpClient: &http.Client{
+			Timeout: 15 * time.Second,
+		},
+	}
+
+	logging.AppLog.Info("PocketBase client initialized", "url", baseURL, "collection", collection, "identity_field", identityField)
 }
 
-// initFromURL initializes the database based on the DATABASE_URL.
-func initFromURL(databaseURL string) {
-	u, err := url.Parse(databaseURL)
-	if err != nil {
-		logging.AppLog.Error("Invalid DATABASE_URL", "error", err)
-		os.Exit(1)
-	}
-
-	driver := u.Scheme
-	logging.AppLog.Info("Attempting to connect to database", "driver", driver)
-
-	switch driver {
-	case "postgres", "postgresql":
-		dbType = "postgres"
-		initPostgreSQL(databaseURL)
-	case "mysql":
-		dbType = "mysql"
-
-		// The mysql driver requires parseTime=true to scan DATE/DATETIME into time.Time
-		q := u.Query()
-		if q.Get("parseTime") == "" {
-			q.Set("parseTime", "true")
-		}
-		u.RawQuery = q.Encode()
-
-		// The mysql driver DSN format is user:password@tcp(host:port)/dbname
-		var dsn string
-		if u.User != nil {
-			dsn = fmt.Sprintf("%s@tcp(%s)%s", u.User.String(), u.Host, u.Path)
-		} else {
-			dsn = fmt.Sprintf("tcp(%s)%s", u.Host, u.Path)
-		}
-		if u.RawQuery != "" {
-			dsn = fmt.Sprintf("%s?%s", dsn, u.RawQuery)
-		}
-		initMySQL(dsn)
-	default:
-		logging.AppLog.Error("Unsupported database driver in DATABASE_URL", "driver", driver)
-		os.Exit(1)
-	}
-}
-
-// initSQLite initializes a SQLite database connection.
-func initSQLite() {
-	databasePath := os.Getenv("DATABASE_PATH")
-	if databasePath == "" {
-		databasePath = "./auth.db"
-	}
-
-	var err error
-	DB, err = sql.Open("sqlite3", databasePath)
-	if err != nil {
-		logging.AppLog.Error("Failed to open sqlite database", "error", err)
-		os.Exit(1)
-	}
-	if err = DB.Ping(); err != nil {
-		logging.AppLog.Error("Failed to connect to sqlite database", "error", err)
-		os.Exit(1)
-	}
-	logging.AppLog.Info("Database connection established", "type", "sqlite", "path", databasePath)
-}
-
-// initPostgreSQL initializes a PostgreSQL database connection.
-func initPostgreSQL(dataSourceName string) {
-	var err error
-	DB, err = sql.Open("postgres", dataSourceName)
-	if err != nil {
-		logging.AppLog.Error("Failed to open postgres database", "error", err)
-		os.Exit(1)
-	}
-	if err = DB.Ping(); err != nil {
-		logging.AppLog.Error("Failed to connect to postgres database", "error", err)
-		os.Exit(1)
-	}
-	logging.AppLog.Info("Database connection established", "type", "postgres")
-}
-
-// initMySQL initializes a MySQL database connection.
-func initMySQL(dataSourceName string) {
-	var err error
-	DB, err = sql.Open("mysql", dataSourceName)
-	if err != nil {
-		logging.AppLog.Error("Failed to open mysql database", "error", err)
-		os.Exit(1)
-	}
-	if err = DB.Ping(); err != nil {
-		logging.AppLog.Error("Failed to connect to mysql database", "error", err)
-		os.Exit(1)
-	}
-	logging.AppLog.Info("Database connection established", "type", "mysql")
-}
-
-// createTables creates the necessary tables if they don't exist, using syntax appropriate for the current dbType.
-func createTables() {
-	var createTableSQL string
-	switch dbType {
-	case "sqlite3":
-		createTableSQL = `CREATE TABLE IF NOT EXISTS users (
-			"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-			"username" TEXT NOT NULL UNIQUE,
-			"password_hash" TEXT NOT NULL,
-			"role" TEXT NOT NULL,
-			"is_active" BOOLEAN NOT NULL DEFAULT TRUE,
-			"failed_logins" INTEGER NOT NULL DEFAULT 0,
-			"last_login_at" DATETIME,
-			"created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
-			"updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP
-		);`
-	case "postgres":
-		createTableSQL = `CREATE TABLE IF NOT EXISTS users (
-			id SERIAL PRIMARY KEY,
-			username VARCHAR(255) NOT NULL UNIQUE,
-			password_hash VARCHAR(255) NOT NULL,
-			role VARCHAR(50) NOT NULL,
-			is_active BOOLEAN NOT NULL DEFAULT TRUE,
-			failed_logins INT NOT NULL DEFAULT 0,
-			last_login_at TIMESTAMP WITH TIME ZONE,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-		);`
-	case "mysql":
-		createTableSQL = `CREATE TABLE IF NOT EXISTS users (
-			id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-			username VARCHAR(255) NOT NULL UNIQUE,
-			password_hash VARCHAR(255) NOT NULL,
-			role VARCHAR(50) NOT NULL,
-			is_active BOOLEAN NOT NULL DEFAULT TRUE,
-			failed_logins INT NOT NULL DEFAULT 0,
-			last_login_at DATETIME,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-		);`
-	}
-
-	if _, err := DB.Exec(createTableSQL); err != nil {
-		logging.AppLog.Error("Failed to create users table", "error", err, "db_type", dbType)
-		os.Exit(1)
-	}
-	logging.AppLog.Info("Users table verified successfully")
-
-	// Now, create the auth_tokens table
-	var createTokenTableSQL string
-	switch dbType {
-	case "sqlite3":
-		createTokenTableSQL = `CREATE TABLE IF NOT EXISTS auth_tokens (
-			"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-			"user_id" INTEGER NOT NULL UNIQUE,
-			"token" TEXT NOT NULL UNIQUE,
-			"expires_at" DATETIME NOT NULL,
-			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-		);`
-	case "postgres":
-		createTokenTableSQL = `CREATE TABLE IF NOT EXISTS auth_tokens (
-			id SERIAL PRIMARY KEY,
-			user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-			token VARCHAR(255) NOT NULL UNIQUE,
-			expires_at TIMESTAMP WITH TIME ZONE NOT NULL
-		);`
-	case "mysql":
-		createTokenTableSQL = `CREATE TABLE IF NOT EXISTS auth_tokens (
-			id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-			user_id INT NOT NULL UNIQUE,
-			token VARCHAR(255) NOT NULL UNIQUE,
-			expires_at DATETIME NOT NULL,
-			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-		);`
-	}
-
-	if _, err := DB.Exec(createTokenTableSQL); err != nil {
-		logging.AppLog.Error("Failed to create auth_tokens table", "error", err, "db_type", dbType)
-		os.Exit(1)
-	}
-	logging.AppLog.Info("Auth_tokens table verified successfully")
-
-	// Now, create the refresh_tokens table
-	var createRefreshTokenTableSQL string
-	switch dbType {
-	case "sqlite3":
-		createRefreshTokenTableSQL = `CREATE TABLE IF NOT EXISTS refresh_tokens (
-			"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-			"user_id" INTEGER NOT NULL UNIQUE,
-			"token" TEXT NOT NULL UNIQUE,
-			"expires_at" DATETIME NOT NULL,
-			"is_revoked" BOOLEAN NOT NULL DEFAULT FALSE,
-			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-		);`
-	case "postgres":
-		createRefreshTokenTableSQL = `CREATE TABLE IF NOT EXISTS refresh_tokens (
-			id SERIAL PRIMARY KEY,
-			user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-			token VARCHAR(255) NOT NULL UNIQUE,
-			expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-			is_revoked BOOLEAN NOT NULL DEFAULT FALSE
-		);`
-	case "mysql":
-		createRefreshTokenTableSQL = `CREATE TABLE IF NOT EXISTS refresh_tokens (
-			id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-			user_id INT NOT NULL UNIQUE,
-			token VARCHAR(255) NOT NULL UNIQUE,
-			expires_at DATETIME NOT NULL,
-			is_revoked BOOLEAN NOT NULL DEFAULT FALSE,
-			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-		);`
-	}
-
-	if _, err := DB.Exec(createRefreshTokenTableSQL); err != nil {
-		logging.AppLog.Error("Failed to create refresh_tokens table", "error", err, "db_type", dbType)
-		os.Exit(1)
-	}
-	logging.AppLog.Info("Refresh_tokens table verified successfully")
-
-}
-
-// Rebind converts a query with '_?_' placeholders to the database-specific format.
-func Rebind(query string) string {
-	if dbType == "postgres" {
-		parts := strings.Split(query, "?")
-		var result strings.Builder
-		for i, part := range parts {
-			if i > 0 {
-				result.WriteString(fmt.Sprintf("$%d", i))
-			}
-			result.WriteString(part)
-		}
-		return result.String()
-	}
-	// sqlite3 and mysql both use '?'
-	return query
-}
-
-// CloseDB closes the database connection.
 func CloseDB() {
-	if DB != nil {
-		if err := DB.Close(); err != nil {
-			logging.AppLog.Error("Failed to close database connection", "error", err)
-		}
-		logging.AppLog.Info("Database connection closed")
+	if PB != nil {
+		logging.AppLog.Info("PocketBase client closed")
 	}
+}
+
+func (c *Client) Collection() string {
+	return c.collection
+}
+
+func (c *Client) IdentityField() string {
+	return c.identityField
+}
+
+func (c *Client) SyntheticEmail(username string) string {
+	if strings.Contains(username, "@") {
+		return username
+	}
+
+	sum := sha1.Sum([]byte(username))
+	return fmt.Sprintf("%s@%s", hex.EncodeToString(sum[:8]), c.emailDomain)
+}
+
+func (c *Client) SuperuserAuth(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	token := c.superToken
+	c.mu.Unlock()
+
+	if token != "" {
+		return token, nil
+	}
+
+	return c.refreshSuperuserToken(ctx)
+}
+
+func (c *Client) refreshSuperuserToken(ctx context.Context) (string, error) {
+	var resp userAuthResponse[map[string]any]
+	err := c.doJSON(ctx, http.MethodPost, "/api/collections/_superusers/auth-with-password", "", map[string]string{
+		"identity": c.superEmail,
+		"password": c.superPassword,
+	}, nil, &resp)
+	if err != nil {
+		return "", err
+	}
+
+	c.mu.Lock()
+	c.superToken = resp.Token
+	c.mu.Unlock()
+
+	return resp.Token, nil
+}
+
+func (c *Client) DoWithSuperuser(ctx context.Context, method, path string, query url.Values, body any, out any) error {
+	token, err := c.SuperuserAuth(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = c.doJSON(ctx, method, path, token, body, query, out)
+	if err == nil {
+		return nil
+	}
+
+	if !IsUnauthorized(err) {
+		return err
+	}
+
+	token, refreshErr := c.refreshSuperuserToken(ctx)
+	if refreshErr != nil {
+		return refreshErr
+	}
+
+	return c.doJSON(ctx, method, path, token, body, query, out)
+}
+
+func (c *Client) Do(ctx context.Context, method, path, bearerToken string, body any, out any) error {
+	return c.doJSON(ctx, method, path, bearerToken, body, nil, out)
+}
+
+type APIError struct {
+	StatusCode int
+	Message    string
+	Details    map[string]any
+}
+
+func (e *APIError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return fmt.Sprintf("pocketbase request failed with status %d", e.StatusCode)
+}
+
+func IsUnauthorized(err error) bool {
+	apiErr, ok := err.(*APIError)
+	return ok && apiErr.StatusCode == http.StatusUnauthorized
+}
+
+func (c *Client) doJSON(ctx context.Context, method, path, bearerToken string, body any, query url.Values, out any) error {
+	if c == nil {
+		return fmt.Errorf("pocketbase client is not initialized")
+	}
+
+	var reader io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(payload)
+	}
+
+	reqURL := c.baseURL + path
+	if len(query) > 0 {
+		reqURL += "?" + query.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, reader)
+	if err != nil {
+		return err
+	}
+
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if bearerToken != "" {
+		req.Header.Set("Authorization", bearerToken)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode >= 400 {
+		return decodeAPIError(resp)
+	}
+
+	if out == nil {
+		io.Copy(io.Discard, resp.Body) //nolint:errcheck
+		return nil
+	}
+
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func decodeAPIError(resp *http.Response) error {
+	payload := struct {
+		Message string         `json:"message"`
+		Data    map[string]any `json:"data"`
+	}{}
+
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    resp.Status,
+		}
+	}
+
+	return &APIError{
+		StatusCode: resp.StatusCode,
+		Message:    payload.Message,
+		Details:    payload.Data,
+	}
+}
+
+func QuoteFilterValue(value string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", "\"", "\\\"")
+	return "\"" + replacer.Replace(value) + "\""
 }
