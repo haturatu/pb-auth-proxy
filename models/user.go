@@ -5,6 +5,8 @@ import (
 	"auth-proxy/types"
 	"auth-proxy/utils"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -111,11 +113,17 @@ func CreateUser(username, password, role string) (*types.User, error) {
 	if err != nil {
 		return nil, err
 	}
+	pocketBasePassword, err := newPocketBasePassword()
+	if err != nil {
+		return nil, err
+	}
 
 	record := pbUserRecord{}
 	err = database.PB.DoWithSuperuser(context.Background(), http.MethodPost, "/api/collections/"+url.PathEscape(database.PB.Collection())+"/records", nil, map[string]any{
 		"username":        username,
 		"email":           database.PB.SyntheticEmail(username),
+		"password":        pocketBasePassword,
+		"passwordConfirm": pocketBasePassword,
 		"password_hash":   passwordHash,
 		"role":            normalizeRole(role),
 		"is_active":       true,
@@ -237,6 +245,14 @@ func SetUserPassword(id, newPassword string) error {
 	return patchUser(id, map[string]any{
 		"password_hash": passwordHash,
 	})
+}
+
+func newPocketBasePassword() (string, error) {
+	randomValue := make([]byte, 32)
+	if _, err := rand.Read(randomValue); err != nil {
+		return "", fmt.Errorf("generate PocketBase compatibility password: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(randomValue), nil
 }
 
 func RecordLoginSuccess(id string) error {

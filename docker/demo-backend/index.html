@@ -1,86 +1,21 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Protected Backend</title>
-    <style>
-        :root {
-            color-scheme: light;
-            --bg: #f4efe6;
-            --card: #fffaf2;
-            --ink: #1e1b18;
-            --accent: #c95f27;
-            --line: #d9c7ae;
-        }
-
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            min-height: 100vh;
-            font-family: Georgia, "Times New Roman", serif;
-            color: var(--ink);
-            background:
-                radial-gradient(circle at top left, rgba(201, 95, 39, 0.18), transparent 28rem),
-                linear-gradient(180deg, #f8f2e8 0%, var(--bg) 100%);
-            display: grid;
-            place-items: center;
-            padding: 24px;
-        }
-
-        main {
-            width: min(760px, 100%);
-            background: var(--card);
-            border: 1px solid var(--line);
-            border-radius: 20px;
-            padding: 32px;
-            box-shadow: 0 20px 60px rgba(79, 53, 24, 0.12);
-        }
-
-        h1 {
-            margin: 0 0 16px;
-            font-size: clamp(2rem, 4vw, 3.5rem);
-            line-height: 0.95;
-        }
-
-        p {
-            font-size: 1.1rem;
-            line-height: 1.7;
-        }
-
-        code {
-            background: rgba(201, 95, 39, 0.09);
-            padding: 0.15em 0.4em;
-            border-radius: 6px;
-        }
-
-        .badge {
-            display: inline-block;
-            margin-bottom: 14px;
-            padding: 6px 10px;
-            border-radius: 999px;
-            background: #2f5d50;
-            color: #f7f3eb;
-            font-size: 0.78rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-        }
-    </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Backend reached through the auth proxy</title>
 </head>
 <body>
-    <main>
-        <div class="badge">Protected Target</div>
-        <h1>Backend reached through the auth proxy</h1>
-        <p>
-            If you can see this page through <code>http://localhost:8080/</code>, the reverse proxy,
-            PocketBase-backed auth flow, and demo backend are all wired correctly.
-        </p>
-        <p>
-            Default login for the seeded proxy admin user: <code>admin</code> / <code>password123</code>.
-        </p>
-    </main>
+<pre>
+Backend reached through the auth proxy
+
+status: ok
+proxy:  http://localhost:8080/
+backend: nginx demo
+
+Default proxy admin:
+username: admin
+password: password123
+</pre>
 </body>
 </html>
