@@ -64,6 +64,7 @@ migrate((app) => {
     let admin = new Record(usersCollection)
     admin.set("username", "admin")
     admin.set("email", "proxy-admin@example.com")
+    admin.setRandomPassword()
     admin.set("password_hash", "$argon2id$v=19$m=19456,t=2,p=1$RoI5lUhP5TkDZ0ilVVeh1A$anm9FrNoNyxabmlVQFz3G6KQuIY7xDtYssbU07WIczQ")
     admin.set("verified", true)
     admin.set("emailVisibility", false)
