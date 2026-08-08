@@ -67,9 +67,9 @@
   PocketBase collection requirements:
 
   - Use an auth collection.
-  - Enable password authentication.
+  - Disable PocketBase password authentication; the proxy performs password authentication.
   - Ensure the auth collection has a unique `username` identity field if you keep the default `POCKETBASE_IDENTITY_FIELD=username`.
-  - Add custom fields `role` (text), `is_active` (bool), `failed_logins` (number), and `last_login_at` (date).
+  - Add custom fields `role` (text), `is_active` (bool), `failed_logins` (number), `last_login_at` (date), and `password_hash` (text, max 255).
   
   ## Why I Built This
   
@@ -82,7 +82,7 @@
   - **Authentication**: Provides login, logout, and registration pages.
   - **Reverse Proxy**: Proxies authenticated users to a backend service.
   - **Admin Dashboard**: A simple UI to manage users (update roles, activate/deactivate, delete).
-  - **PocketBase Backend**: User records, admin operations, and credential checks are delegated to a PocketBase auth collection.
+  - **PocketBase Backend**: User records and admin operations are stored in a PocketBase auth collection.
   - **Pluggable Frontend**: Supports multiple frontend modes (JS-driven or PHP).
   - **Security Hardening**:
       - **Brute-force Protection**: Locks user accounts after a configurable number of failed login attempts. This protection applies to both the web UI login and the `/api/auth/token` endpoint.
@@ -108,9 +108,8 @@
   - `XSRF_SECRET_KEY`: A 32-byte, base64-encoded random key for XSRF protection.
   
   ### Password Encryption
-  
-  User passwords are never stored in plaintext. They are securely hashed using the **bcrypt** algorithm, a strong, adaptive hashing function designed specifically for passwords. When a user logs in, the provided password is
-  hashed and then compared to the stored hash, preventing plaintext password exposure even if the database is compromised.
+
+  User passwords are never stored in plaintext. The proxy hashes them with **Argon2id** and stores the PHC-formatted result in the `password_hash` field. On login, the supplied password is verified against that hash.
   
   ### Authentication Flow
   
@@ -121,7 +120,7 @@
   This flow is designed for users interacting with the application through a web browser.
   
   1.  A user submits their username and password via the login page.
-  2.  The server validates the credentials against PocketBase.
+  2.  The server validates the credentials against the Argon2id hash stored in PocketBase.
   3.  On success, the proxy issues its own signed session JWT.
   4.  This token is sent to the user's browser in a secure, `HttpOnly` cookie named `auth_token`, establishing a session.
   
@@ -130,7 +129,7 @@
   This flow is designed for programmatic clients and services.
   
   1.  A client sends a `POST` request with the user's username and password to the `/api/auth/token` endpoint.
-  2.  The server validates the credentials.
+  2.  The server validates the credentials against the Argon2id hash stored in PocketBase.
   3.  On success, it generates and returns two tokens:
       *   A short-lived **JWT Access Token** containing user claims (ID, role) and an expiration time. This token is signed to prevent tampering.
       *   A long-lived **Refresh Token** issued by the proxy and used to mint a new access token.

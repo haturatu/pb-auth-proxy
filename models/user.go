@@ -3,7 +3,9 @@ package models
 import (
 	"auth-proxy/database"
 	"auth-proxy/types"
+	"auth-proxy/utils"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -19,6 +21,7 @@ type pbUserRecord struct {
 	IsActive     *bool  `json:"is_active"`
 	FailedLogins any    `json:"failed_logins"`
 	LastLoginAt  string `json:"last_login_at"`
+	PasswordHash string `json:"password_hash"`
 	Created      string `json:"created"`
 	Updated      string `json:"updated"`
 }
@@ -104,12 +107,16 @@ func normalizeUser(record pbUserRecord) (*types.User, error) {
 }
 
 func CreateUser(username, password, role string) (*types.User, error) {
+	passwordHash, err := utils.HashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+
 	record := pbUserRecord{}
-	err := database.PB.DoWithSuperuser(context.Background(), http.MethodPost, "/api/collections/"+url.PathEscape(database.PB.Collection())+"/records", nil, map[string]any{
+	err = database.PB.DoWithSuperuser(context.Background(), http.MethodPost, "/api/collections/"+url.PathEscape(database.PB.Collection())+"/records", nil, map[string]any{
 		"username":        username,
 		"email":           database.PB.SyntheticEmail(username),
-		"password":        password,
-		"passwordConfirm": password,
+		"password_hash":   passwordHash,
 		"role":            normalizeRole(role),
 		"is_active":       true,
 		"failed_logins":   0,
@@ -125,24 +132,39 @@ func CreateUser(username, password, role string) (*types.User, error) {
 }
 
 func AuthenticateWithPassword(username, password string) (*types.User, error) {
-	resp := struct {
-		Token  string       `json:"token"`
-		Record pbUserRecord `json:"record"`
-	}{}
-
-	err := database.PB.Do(context.Background(), http.MethodPost, "/api/collections/"+url.PathEscape(database.PB.Collection())+"/auth-with-password", "", map[string]any{
-		"identity":      username,
-		"password":      password,
-		"identityField": database.PB.IdentityField(),
-	}, &resp)
+	record, err := getUserRecordByUsername(username)
 	if err != nil {
 		return nil, err
 	}
+	if record == nil {
+		return nil, errors.New("invalid username or password")
+	}
 
-	return normalizeUser(resp.Record)
+	if record.PasswordHash != "" {
+		valid, err := utils.VerifyPassword(password, record.PasswordHash)
+		if err != nil {
+			return nil, err
+		}
+		if !valid {
+			return nil, errors.New("invalid username or password")
+		}
+
+		return normalizeUser(*record)
+	}
+
+	return nil, errors.New("invalid username or password")
 }
 
 func GetUserByUsername(username string) (*types.User, error) {
+	record, err := getUserRecordByUsername(username)
+	if err != nil || record == nil {
+		return nil, err
+	}
+
+	return normalizeUser(*record)
+}
+
+func getUserRecordByUsername(username string) (*pbUserRecord, error) {
 	query := url.Values{}
 	query.Set("filter", fmt.Sprintf("%s=%s", database.PB.IdentityField(), database.QuoteFilterValue(username)))
 	query.Set("perPage", "1")
@@ -156,7 +178,7 @@ func GetUserByUsername(username string) (*types.User, error) {
 		return nil, nil
 	}
 
-	return normalizeUser(resp.Items[0])
+	return &resp.Items[0], nil
 }
 
 func GetUserByID(id string) (*types.User, error) {
@@ -206,11 +228,14 @@ func DeleteUser(id string) error {
 	return database.PB.DoWithSuperuser(context.Background(), http.MethodDelete, "/api/collections/"+url.PathEscape(database.PB.Collection())+"/records/"+url.PathEscape(id), nil, nil, nil)
 }
 
-func ChangeUserPassword(id, currentPassword, newPassword string) error {
+func SetUserPassword(id, newPassword string) error {
+	passwordHash, err := utils.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
 	return patchUser(id, map[string]any{
-		"oldPassword":     currentPassword,
-		"password":        newPassword,
-		"passwordConfirm": newPassword,
+		"password_hash": passwordHash,
 	})
 }
 

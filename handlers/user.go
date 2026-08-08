@@ -91,7 +91,7 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := models.ChangeUserPassword(user.ID, currentPassword, newPassword); err != nil {
+		if err := models.SetUserPassword(user.ID, newPassword); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			if err := json.NewEncoder(w).Encode(map[string]string{"error": "Failed to update password."}); err != nil {
 				logging.AppLog.Error("Failed to encode json error response", "error", err)
