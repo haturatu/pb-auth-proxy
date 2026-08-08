@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -e
+
+gofmt_output=$(gofmt -l .)
+if [ -n "$gofmt_output" ]; then
+    echo "The following files are not formatted correctly:"
+    echo "$gofmt_output"
+    echo "Run 'gofmt -w .' before committing."
+    exit 1
+fi
+
+echo "All Go files are correctly formatted."
