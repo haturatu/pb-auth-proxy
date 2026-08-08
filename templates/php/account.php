@@ -1,9 +1,12 @@
 <?php
     $paths = [
         'AccountPassword' => $_SERVER['AUTH_PATH_ACCOUNT_PASSWORD'] ?? '/account/password',
+        'Admin' => $_SERVER['AUTH_PATH_ADMIN'] ?? '/admin',
         'Logout' => $_SERVER['AUTH_PATH_LOGOUT'] ?? '/logout',
         'Assets' => $_SERVER['AUTH_ASSETS_PATH'] ?? '/assets',
     ];
+
+    $isAdmin = ($_SERVER['HTTP_X_USER_ROLE'] ?? '') === 'admin';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -20,6 +23,9 @@
         <p>Welcome, <?php echo htmlspecialchars($_SERVER['HTTP_X_USERNAME']); ?>!</p>
         <ul>
             <li><a href="<?php echo htmlspecialchars($paths['AccountPassword']); ?>">Change Password</a></li>
+            <?php if ($isAdmin): ?>
+                <li><a href="<?php echo htmlspecialchars($paths['Admin']); ?>">Admin Dashboard</a></li>
+            <?php endif; ?>
         </ul>
         <div class="logout-link">
             <a href="<?php echo htmlspecialchars($paths['Logout']); ?>">Logout</a>

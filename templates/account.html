@@ -13,6 +13,9 @@
         <p>Welcome, {{.User.Username}}!</p>
         <ul>
             <li><a href="{{.Paths.AccountPassword}}">Change Password</a></li>
+            {{if eq .User.Role "admin"}}
+            <li><a href="{{.Paths.Admin}}">Admin Dashboard</a></li>
+            {{end}}
         </ul>
         <div class="logout-link">
             <a href="{{.Paths.Logout}}">Logout</a>
