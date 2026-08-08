@@ -30,10 +30,6 @@ type Client struct {
 	superToken string
 }
 
-type apiListResponse[T any] struct {
-	Items []T `json:"items"`
-}
-
 type userAuthResponse[T any] struct {
 	Token  string `json:"token"`
 	Record T      `json:"record"`
