@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 FROM golang:1.27-alpine AS builder
 
 WORKDIR /src
@@ -14,7 +16,7 @@ RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 
-COPY --from=builder /out/auth-proxy-server /app/auth-proxy-server
+COPY --link --from=builder /out/auth-proxy-server /app/auth-proxy-server
 COPY templates /app/templates
 
 EXPOSE 8080
