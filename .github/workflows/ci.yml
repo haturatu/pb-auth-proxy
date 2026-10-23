@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.25.3'
+          go-version: '1.27.3'
           cache-dependency-path: '**/go.sum'
 
       - name: Run build
@@ -32,7 +32,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.25.3'
+          go-version: '1.27.3'
           cache-dependency-path: '**/go.sum'
 
       - name: Check formatting
@@ -56,5 +56,5 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: v2.15.0
           skip-cache: true
