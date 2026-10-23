@@ -3,6 +3,7 @@ package handlers
 import (
 	"auth-proxy/config"
 	"auth-proxy/logging"
+	"auth-proxy/middleware"
 	"auth-proxy/models"
 	"net/http"
 	"time"
@@ -10,6 +11,16 @@ import (
 
 // LogoutHandler invalidates the user's token by expiring the cookie.
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		if err := templates.ExecuteTemplate(w, "logout.html", map[string]any{"Paths": config.Paths, "XSRFToken": middleware.GetXSRFToken(r)}); err != nil {
+			logging.AppLog.Error("Failed to render logout", "error", err)
+		}
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	ip := logging.GetClientIP(r)
 	cookie, err := r.Cookie("auth_token")
 	if err != nil {
@@ -20,8 +31,12 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = models.DeleteAuthToken(cookie.Value)
 	if err != nil {
-		// Log the error but still proceed with logging the user out client-side.
+		// Fail closed if server-side revocation could not be persisted.
 		logging.AppLog.Error("Failed to delete token on logout", "error", err, "ip", ip)
+		if err != models.ErrInvalidToken {
+			http.Error(w, "Could not revoke session", http.StatusServiceUnavailable)
+			return
+		}
 	}
 
 	// Expire the cookie by setting its max age to a negative number.
@@ -32,7 +47,7 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   config.Paths.CookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
 

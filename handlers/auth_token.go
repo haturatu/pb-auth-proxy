@@ -4,7 +4,6 @@ import (
 	"auth-proxy/config"
 	"auth-proxy/logging"
 	"auth-proxy/models"
-	"auth-proxy/utils"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -13,6 +12,11 @@ import (
 // RefreshTokenHandler handles exchanging a valid refresh token for a new access token.
 func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	ip := logging.GetClientIP(r)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
 
 	// 1. Parse request body
 	var reqBody struct {
@@ -27,40 +31,17 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Validate the refresh token in DB
-	refreshToken, err := models.GetRefreshTokenByToken(reqBody.RefreshToken)
-	if err != nil {
-		logging.AppLog.Error("Error getting refresh token from DB", "error", err, "ip", ip)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	if refreshToken == nil || refreshToken.IsRevoked || time.Now().After(refreshToken.ExpiresAt) {
-		logging.SecurityLog.Warn("REFRESH TOKEN FAIL", "reason", "token not found, revoked, or expired", "ip", ip)
-		http.Error(w, "Unauthorized: Invalid refresh token", http.StatusUnauthorized)
-		return
-	}
-
-	// 3. Get user info
-	user, err := models.GetUserByID(refreshToken.UserID)
+	user, err := models.ConsumeRefreshToken(reqBody.RefreshToken)
 	if err != nil || user == nil {
-		logging.AppLog.Error("Failed to get user from refresh token", "error", err, "user_id", refreshToken.UserID, "ip", ip)
-		http.Error(w, "Unauthorized: User not found", http.StatusUnauthorized)
+		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
 		return
 	}
-
 	// 4. Issue a new access token
-	newAccessToken, err := utils.GenerateJWT(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute, "access")
+	newAccessToken, err := models.CreateToken(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute, "access")
 	if err != nil {
 		logging.AppLog.Error("Failed to generate new access token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
-	}
-
-	// --- Optional: Token Rotation ---
-	// 5. Delete the old refresh token
-	if err := models.DeleteRefreshTokenByToken(refreshToken.Token); err != nil {
-		logging.AppLog.Error("Failed to delete old refresh token", "error", err, "ip", ip)
-		// Continue, but log the error
 	}
 
 	// 6. Issue a new refresh token
@@ -110,8 +91,9 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- Issue Tokens ---
+	w.Header().Set("Cache-Control", "no-store")
 	// Access Token
-	accessToken, err := utils.GenerateJWT(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute, "access")
+	accessToken, err := models.CreateToken(user, time.Duration(config.Paths.AccessTokenDurationMinutes)*time.Minute, "access")
 	if err != nil {
 		logging.AppLog.Error("Failed to generate access token", "error", err, "username", user.Username, "ip", ip)
 		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)

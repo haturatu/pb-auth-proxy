@@ -18,6 +18,8 @@ import (
 
 type pbUserRecord struct {
 	ID           string `json:"id"`
+	AuthVersion  string `json:"auth_version"`
+	LockedUntil  string `json:"locked_until"`
 	Username     string `json:"username"`
 	Role         string `json:"role"`
 	IsActive     *bool  `json:"is_active"`
@@ -78,6 +80,10 @@ func normalizeRole(role string) string {
 }
 
 func normalizeUser(record pbUserRecord) (*types.User, error) {
+	lockedUntil, err := parsePBTime(record.LockedUntil)
+	if err != nil {
+		return nil, err
+	}
 	lastLoginAt, err := parsePBTime(record.LastLoginAt)
 	if err != nil {
 		return nil, err
@@ -98,6 +104,8 @@ func normalizeUser(record pbUserRecord) (*types.User, error) {
 
 	return &types.User{
 		ID:           record.ID,
+		AuthVersion:  record.AuthVersion,
+		LockedUntil:  lockedUntil,
 		Username:     record.Username,
 		Role:         normalizeRole(record.Role),
 		IsActive:     isActive,
@@ -242,9 +250,11 @@ func SetUserPassword(id, newPassword string) error {
 		return err
 	}
 
-	return patchUser(id, map[string]any{
-		"password_hash": passwordHash,
-	})
+	version, err := utils.RandomToken()
+	if err != nil {
+		return err
+	}
+	return patchUser(id, map[string]any{"password_hash": passwordHash, "auth_version": version})
 }
 
 func newPocketBasePassword() (string, error) {
@@ -259,7 +269,7 @@ func RecordLoginSuccess(id string) error {
 	return patchUser(id, map[string]any{
 		"failed_logins": 0,
 		"last_login_at": time.Now().UTC().Format(time.RFC3339),
-		"is_active":     true,
+		"locked_until":  "",
 	})
 }
 
@@ -273,14 +283,16 @@ func RecordLoginFailure(id string) error {
 	}
 
 	return patchUser(id, map[string]any{
-		"failed_logins": user.FailedLogins + 1,
+		"failed_logins": failedLoginCount(user) + 1,
 	})
 }
 
 func SetUserActiveStatus(id string, isActive bool) error {
-	return patchUser(id, map[string]any{
-		"is_active": isActive,
-	})
+	version, err := utils.RandomToken()
+	if err != nil {
+		return err
+	}
+	return patchUser(id, map[string]any{"is_active": isActive, "auth_version": version})
 }
 
 func patchUser(id string, body map[string]any) error {
@@ -322,4 +334,22 @@ func ValidationMessage(err error) string {
 	}
 
 	return ""
+}
+
+func LockUser(id string, until time.Time) error {
+	return patchUser(id, map[string]any{"locked_until": until.UTC().Format(time.RFC3339Nano)})
+}
+func RevokeUserSessions(id string) error {
+	version, err := utils.RandomToken()
+	if err != nil {
+		return err
+	}
+	return patchUser(id, map[string]any{"auth_version": version})
+}
+
+func failedLoginCount(user *types.User) int {
+	if user.LockedUntil != nil && !time.Now().Before(*user.LockedUntil) {
+		return 0
+	}
+	return user.FailedLogins
 }

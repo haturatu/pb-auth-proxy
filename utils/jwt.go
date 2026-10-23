@@ -3,6 +3,7 @@ package utils
 import (
 	"auth-proxy/types"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -24,6 +25,13 @@ func base64Decode(src string) ([]byte, error) {
 }
 
 func GenerateJWT(user *types.User, duration time.Duration, tokenType string) (string, error) {
+	id, err := RandomToken()
+	if err != nil {
+		return "", err
+	}
+	if len(os.Getenv("SESSION_SECRET")) < 32 {
+		return "", fmt.Errorf("SESSION_SECRET must be at least 32 bytes")
+	}
 	header := map[string]string{
 		"alg": "HS256",
 		"typ": "JWT",
@@ -34,11 +42,13 @@ func GenerateJWT(user *types.User, duration time.Duration, tokenType string) (st
 	}
 
 	payload := types.JWTPayload{
-		UserID:    user.ID,
-		Username:  user.Username,
-		Role:      user.Role,
-		TokenType: tokenType,
-		Exp:       time.Now().Add(duration).Unix(),
+		ID:          id,
+		AuthVersion: user.AuthVersion,
+		UserID:      user.ID,
+		Username:    user.Username,
+		Role:        user.Role,
+		TokenType:   tokenType,
+		Exp:         time.Now().Add(duration).Unix(),
 	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -57,6 +67,9 @@ func GenerateJWT(user *types.User, duration time.Duration, tokenType string) (st
 }
 
 func ValidateJWT(tokenString string) (*types.JWTPayload, error) {
+	if len(os.Getenv("SESSION_SECRET")) < 32 {
+		return nil, fmt.Errorf("invalid session secret")
+	}
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid token format")
@@ -83,9 +96,21 @@ func ValidateJWT(tokenString string) (*types.JWTPayload, error) {
 	if err := json.Unmarshal(payloadJSON, &payload); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
 	}
-	if time.Now().Unix() > payload.Exp {
+	if payload.ID == "" || payload.UserID == "" || time.Now().Unix() >= payload.Exp {
 		return nil, fmt.Errorf("token has expired")
 	}
 
 	return &payload, nil
+}
+
+func RandomToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+func TokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("%x", sum)
 }

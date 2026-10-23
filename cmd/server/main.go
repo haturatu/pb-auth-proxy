@@ -25,6 +25,14 @@ func main() {
 
 	// Initialize path configurations
 	config.Init()
+	if err := config.Validate(); err != nil {
+		logging.AppLog.Error("Invalid configuration", "error", err)
+		os.Exit(1)
+	}
+	if err := handlers.InitPasskeys(); err != nil {
+		logging.AppLog.Error("Invalid WebAuthn configuration", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize database
 	database.InitDB()
@@ -37,8 +45,9 @@ func main() {
 
 	// --- Secret Key Validation ---
 	sessionSecret := os.Getenv("SESSION_SECRET")
-	if sessionSecret == "" {
-		logging.AppLog.Warn("SESSION_SECRET environment variable not set. Using default key. THIS IS NOT SAFE FOR PRODUCTION.")
+	if len(sessionSecret) < 32 {
+		logging.AppLog.Error("SESSION_SECRET must be at least 32 bytes")
+		os.Exit(1)
 	}
 	xsrfSecret := os.Getenv("XSRF_SECRET_KEY")
 	if xsrfSecret == "" {

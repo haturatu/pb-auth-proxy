@@ -2,8 +2,12 @@ package config
 
 import (
 	"auth-proxy/types"
+	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -57,6 +61,13 @@ func Init() {
 		FrontPath:       getEnv("FRONT_PATH", "/"),
 		APIPath:         getEnv("API_PATH", "/api/"),
 
+		PublicOrigin:    getEnv("PUBLIC_ORIGIN", getEnv("WEBAUTHN_ORIGIN", "")),
+		CookieSecure:    getEnvAsBool("COOKIE_SECURE", true),
+		WebAuthnEnabled: getEnvAsBool("WEBAUTHN_ENABLED", false),
+		WebAuthnRPID:    getEnv("WEBAUTHN_RP_ID", ""),
+		WebAuthnRPName:  getEnv("WEBAUTHN_RP_NAME", "PB Auth Proxy"),
+		WebAuthnOrigin:  getEnv("WEBAUTHN_ORIGIN", ""),
+
 		// Booleans
 		ProtectFrontend: getEnvAsBool("PROTECT_FRONTEND", false),
 		ProtectAPI:      getEnvAsBool("PROTECT_API", false),
@@ -74,4 +85,29 @@ func Init() {
 		AccessTokenDurationMinutes: getEnvAsInt("ACCESS_TOKEN_DURATION_MINUTES", 15),
 		RefreshTokenDurationDays:   getEnvAsInt("REFRESH_TOKEN_DURATION_DAYS", 7),
 	}
+}
+
+// Validate rejects unsafe public origins instead of trusting request Host/forwarded headers.
+func Validate() error {
+	u, err := url.Parse(Paths.PublicOrigin)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || (u.Scheme != "https" && u.Scheme != "http") {
+		return fmt.Errorf("PUBLIC_ORIGIN must be an explicit http(s) origin without path")
+	}
+	local := u.Hostname() == "localhost" || net.ParseIP(u.Hostname()) != nil && net.ParseIP(u.Hostname()).IsLoopback()
+	if (u.Scheme != "https" || !Paths.CookieSecure) && !local {
+		return fmt.Errorf("HTTPS and COOKIE_SECURE=true are required outside localhost")
+	}
+	if Paths.WebAuthnEnabled {
+		if Paths.WebAuthnOrigin != Paths.PublicOrigin || Paths.WebAuthnRPID == "" {
+			return fmt.Errorf("WEBAUTHN_ORIGIN must equal PUBLIC_ORIGIN and WEBAUTHN_RP_ID is required")
+		}
+		host := u.Hostname()
+		if host != Paths.WebAuthnRPID && !strings.HasSuffix(host, "."+Paths.WebAuthnRPID) {
+			return fmt.Errorf("WEBAUTHN_RP_ID must be the origin host or its parent domain")
+		}
+		if uv := getEnv("WEBAUTHN_USER_VERIFICATION", "required"); uv != "required" {
+			return fmt.Errorf("WEBAUTHN_USER_VERIFICATION must be required")
+		}
+	}
+	return nil
 }

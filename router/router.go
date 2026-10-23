@@ -77,7 +77,28 @@ func NewRouter() http.Handler {
 
 	// --- API Routes (No XSRF) ---
 	apiMux.HandleFunc("/api/auth/token", handlers.TokenHandler)
-	apiMux.HandleFunc("/auth/refresh", handlers.RefreshTokenHandler)
+	apiMux.HandleFunc("/api/auth/refresh", handlers.RefreshTokenHandler)
+
+	// Browser authentication endpoints always enforce origin and browser-bound CSRF.
+	authLimiter := &types.RateLimiter{Requests: make(map[string][]int64), Max: 60, Window: time.Minute}
+	browser := func(h http.Handler) http.Handler {
+		return middleware.BrowserSecurity(middleware.RateLimitMiddleware(authLimiter)(h))
+	}
+	apiMux.Handle("/api/auth/browser", browser(http.HandlerFunc(handlers.BrowserInfoHandler)))
+	apiMux.Handle("/api/auth/reauthenticate", browser(http.HandlerFunc(handlers.ReauthenticateHandler)))
+	for path, route := range map[string]struct {
+		handler http.HandlerFunc
+		method  string
+	}{
+		"/api/auth/passkeys/register/begin":  {handlers.PasskeyRegisterBegin, http.MethodPost},
+		"/api/auth/passkeys/register/finish": {handlers.PasskeyRegisterFinish, http.MethodPost},
+		"/api/auth/passkeys/login/begin":     {handlers.PasskeyLoginBegin, http.MethodPost},
+		"/api/auth/passkeys/login/finish":    {handlers.PasskeyLoginFinish, http.MethodPost},
+		"/api/auth/passkeys":                 {handlers.PasskeysHandler, ""},
+		"/api/auth/passkeys/":                {handlers.PasskeysHandler, ""},
+	} {
+		apiMux.Handle(path, browser(handlers.PasskeyAPI(route.handler, route.method)))
+	}
 
 	// Admin API endpoints
 	adminCreateUserAPI := http.HandlerFunc(handlers.CreateUserHandler)
@@ -93,8 +114,8 @@ func NewRouter() http.Handler {
 	adminDeleteUserAPI := http.HandlerFunc(handlers.DeleteUserHandler)
 	adminSetStatusAPI := http.HandlerFunc(handlers.SetUserActiveStatusHandler)
 
-	apiMux.Handle(config.Paths.AdminUsersAPI, middleware.BearerAuth(middleware.AdminMiddleware(adminUsersAPI)))
-	apiMux.Handle(config.Paths.AdminUsersAPI+"/", middleware.BearerAuth(middleware.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiMux.Handle(config.Paths.AdminUsersAPI, middleware.CookieAPISecurity(middleware.BearerAuth(middleware.AdminMiddleware(adminUsersAPI))))
+	apiMux.Handle(config.Paths.AdminUsersAPI+"/", middleware.CookieAPISecurity(middleware.BearerAuth(middleware.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
 		case strings.HasSuffix(path, "/role") && r.Method == http.MethodPost:
@@ -106,7 +127,7 @@ func NewRouter() http.Handler {
 		default:
 			http.NotFound(w, r)
 		}
-	}))))
+	})))))
 
 	// --- Main Application Proxy ---
 	proxyHandler := handlers.NewProxy(targetURL)
@@ -117,7 +138,7 @@ func NewRouter() http.Handler {
 	// --- Final Handler ---
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Handle API paths
-		if strings.HasPrefix(r.URL.Path, config.Paths.APIPath) {
+		if strings.HasPrefix(r.URL.Path, "/api/auth/") || strings.HasPrefix(r.URL.Path, config.Paths.AdminUsersAPI) || strings.HasPrefix(r.URL.Path, config.Paths.APIPath) {
 			// Check if a specific handler exists in the API mux
 			_, pattern := apiMux.Handler(r)
 
@@ -127,10 +148,15 @@ func NewRouter() http.Handler {
 				return
 			}
 
+			if strings.HasPrefix(r.URL.Path, "/api/auth/") {
+				http.NotFound(w, r)
+				return
+			}
+
 			// If no specific handler is found, it's a request to be proxied.
 			// Protect it with Bearer/Cookie auth if PROTECT_API is enabled.
 			if config.Paths.ProtectAPI {
-				middleware.BearerAuth(proxyHandler).ServeHTTP(w, r)
+				middleware.CookieAPISecurity(middleware.BearerAuth(proxyHandler)).ServeHTTP(w, r)
 			} else {
 				proxyHandler.ServeHTTP(w, r)
 			}

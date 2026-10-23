@@ -100,7 +100,7 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(map[string]string{"message": "Password updated successfully."}); err != nil {
+		if err := json.NewEncoder(w).Encode(map[string]string{"message": "Password updated. All sessions and API tokens have been revoked. Sign in again with your new password."}); err != nil {
 			logging.AppLog.Error("Failed to encode json error response", "error", err)
 		}
 		return

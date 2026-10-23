@@ -20,15 +20,26 @@ func RateLimitMiddleware(l *types.RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			l.Mutex.Lock()
-			defer l.Mutex.Unlock()
 
 			ip, _, err := net.SplitHostPort(r.RemoteAddr)
 			if err != nil {
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				l.Mutex.Unlock()
+				http.Error(w, "Invalid client address", http.StatusBadRequest)
 				return
 			}
 
 			now := time.Now().Unix()
+			// Bound memory and discard expired clients on every request.
+			for key, values := range l.Requests {
+				if len(values) == 0 || now-values[len(values)-1] >= int64(l.Window.Seconds()) {
+					delete(l.Requests, key)
+				}
+			}
+			if len(l.Requests) >= 10000 && l.Requests[ip] == nil {
+				l.Mutex.Unlock()
+				http.Error(w, "Too Many Requests", 429)
+				return
+			}
 			if _, ok := l.Requests[ip]; !ok {
 				l.Requests[ip] = []int64{}
 			}
@@ -43,15 +54,18 @@ func RateLimitMiddleware(l *types.RateLimiter) func(http.Handler) http.Handler {
 			l.Requests[ip] = recentRequests
 
 			if len(l.Requests[ip]) >= l.Max {
+				l.Mutex.Unlock()
+				w.Header().Set("Retry-After", "60")
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 				return
 			}
 
 			// Only add a timestamp for POST requests (actual registration attempts)
-			if r.Method == http.MethodPost {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
 				l.Requests[ip] = append(l.Requests[ip], now)
 			}
 
+			l.Mutex.Unlock()
 			next.ServeHTTP(w, r)
 		})
 	}

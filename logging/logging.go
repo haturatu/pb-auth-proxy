@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,10 +16,6 @@ var (
 
 // InitLoggers initializes the application and security loggers.
 func InitLoggers() {
-	// For now, both loggers write to stdout.
-	// This could be configured to write to different files (e.g., app.log, security.log)
-	appWriter := os.Stdout
-	securityWriter := os.Stdout
 
 	var logLevel slog.Level
 	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
@@ -34,16 +31,9 @@ func InitLoggers() {
 		logLevel = slog.LevelInfo // Default to INFO
 	}
 
-	AppLog = slog.New(slog.NewTextHandler(appWriter, &slog.HandlerOptions{
-		Level:     logLevel,
-		AddSource: false, // Include source file and line number for app logs
-	}))
-
-	SecurityLog = slog.New(slog.NewTextHandler(securityWriter, &slog.HandlerOptions{
-		Level: logLevel,
-		// The default TextHandler format is `time=... level=... msg=... key=value`.
-		// This is structured and easily parsable, so we'll stick with it.
-	}))
+	handler := splitHandler{out: slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}), err: slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})}
+	AppLog = slog.New(handler)
+	SecurityLog = slog.New(handler)
 }
 
 // GetClientIP extracts the client IP address from the request.
@@ -64,4 +54,22 @@ func GetClientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return ip
+}
+
+type splitHandler struct{ out, err slog.Handler }
+
+func (h splitHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.out.Enabled(ctx, level)
+}
+func (h splitHandler) Handle(ctx context.Context, record slog.Record) error {
+	if record.Level >= slog.LevelWarn {
+		return h.err.Handle(ctx, record)
+	}
+	return h.out.Handle(ctx, record)
+}
+func (h splitHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return splitHandler{h.out.WithAttrs(attrs), h.err.WithAttrs(attrs)}
+}
+func (h splitHandler) WithGroup(name string) slog.Handler {
+	return splitHandler{h.out.WithGroup(name), h.err.WithGroup(name)}
 }
