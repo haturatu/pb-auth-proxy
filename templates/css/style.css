@@ -126,3 +126,18 @@ ul {
 li {
     margin-bottom: 1rem;
 }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid #0056b3; outline-offset: 3px; }
+button { min-height: 44px; touch-action: manipulation; }
+button:disabled { opacity: 0.6; cursor: wait; }
+button[aria-busy="true"]::after { content: " …"; }
+.secondary-button { background: #e8eef7; color: #17365d; }
+.secondary-button:hover { background: #d6e2f2; }
+.passkey-divider, .passkey-details { text-align: center; color: #555; }
+.passkey-details { font-size: 0.875rem; overflow-wrap: anywhere; }
+#passkey-manager { margin-top: 2rem; border-top: 1px solid #ddd; padding-top: 1.5rem; }
+#passkey-manager form { margin-top: 1.5rem; }
+#passkey-manager input { margin: 0.5rem 0 1rem; }
+#passkey-list li { border-bottom: 1px solid #ddd; padding-bottom: 1rem; overflow-wrap: anywhere; }
+#passkey-status { min-height: 1.5em; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { button { transition: none; } }

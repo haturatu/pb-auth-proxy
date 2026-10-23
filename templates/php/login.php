@@ -20,14 +20,20 @@
             <input type="hidden" name="xsrf_token" value="<?php echo htmlspecialchars($_SERVER['HTTP_X_XSRF_TOKEN']); ?>">
             <div class="form-group">
                 <label for="username">Username</label>
-                <input type="text" id="username" name="username" required>
+                <input type="text" id="username" name="username" autocomplete="username webauthn" required>
             </div>
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
             </div>
             <button type="submit">Login</button>
         </form>
+        <section id="passkey-signin" hidden aria-label="Passkey sign in">
+            <p class="passkey-divider">or</p>
+            <button type="button" id="passkey-login">Sign in with a passkey</button>
+            <p class="passkey-details">Use your fingerprint, face or PIN.</p>
+        </section>
+        <p id="passkey-status" class="message" role="status" aria-live="polite"></p>
         <p class="error">
             <?php
                 if (!empty($_GET['error'])) {
@@ -39,5 +45,6 @@
             <a href="<?php echo htmlspecialchars($paths['Register']); ?>">Don't have an account? Register</a>
         </div>
     </div>
+    <script src="<?php echo htmlspecialchars($paths['Assets']); ?>/js/passkeys.js" defer></script>
 </body>
 </html>
