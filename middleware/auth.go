@@ -5,7 +5,6 @@ import (
 	"auth-proxy/logging"
 	"auth-proxy/models"
 	"auth-proxy/types"
-	"auth-proxy/utils"
 	"context"
 	"net/http"
 	"strings"
@@ -41,10 +40,13 @@ func SessionAuth(next http.Handler) http.Handler {
 		if user == nil {
 			// Clear the invalid cookie
 			http.SetCookie(w, &http.Cookie{
-				Name:   "auth_token",
-				Value:  "",
-				Path:   "/",
-				MaxAge: -1,
+				Name:     "auth_token",
+				Secure:   config.Paths.CookieSecure,
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				Value:    "",
+				Path:     "/",
+				MaxAge:   -1,
 			})
 			logging.SecurityLog.Warn("ACCESS DENIED", "reason", "invalid or expired session token", "path", r.URL.Path, "ip", ip)
 			http.Redirect(w, r, config.Paths.Login, http.StatusFound)
@@ -77,34 +79,13 @@ func BearerAuth(next http.Handler) http.Handler {
 			}
 
 			tokenString := parts[1]
-			payload, err := utils.ValidateJWT(tokenString)
+			user, err := models.GetUserByTypedToken(tokenString, "access")
 			if err != nil {
-				logging.SecurityLog.Warn("API ACCESS DENIED", "reason", "invalid JWT token", "error", err.Error(), "path", r.URL.Path, "ip", ip)
-				http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-
-			if payload.TokenType != "access" {
-				logging.SecurityLog.Warn("API ACCESS DENIED", "reason", "unexpected token type", "token_type", payload.TokenType, "path", r.URL.Path, "ip", ip)
-				http.Error(w, "Unauthorized: Invalid token type", http.StatusUnauthorized)
-				return
-			}
-
-			user, err := models.GetUserByID(payload.UserID)
-			if err != nil || user == nil {
-				if user == nil {
-					logging.SecurityLog.Error("API ACCESS DENIED", "reason", "user from token not found", "user_id", payload.UserID, "path", r.URL.Path, "ip", ip)
-					http.Error(w, "Unauthorized: User not found", http.StatusUnauthorized)
-				} else {
-					logging.AppLog.Error("Error fetching user from DB", "error", err, "user_id", payload.UserID, "path", r.URL.Path, "ip", ip)
-					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				}
-				return
-			}
-
-			if !user.IsActive {
-				logging.SecurityLog.Warn("API ACCESS DENIED", "reason", "user is inactive", "user_id", user.ID, "path", r.URL.Path, "ip", ip)
-				http.Error(w, "Forbidden: User account is inactive", http.StatusForbidden)
+			if user == nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 

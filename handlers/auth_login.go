@@ -38,26 +38,11 @@ func authenticateUser(username, password, ip string) (*types.User, error) {
 		return nil, errors.New("invalid username or password")
 	}
 
-	// Step 1: Check if the account is locked.
 	if !user.IsActive {
-		lockoutDuration := time.Duration(config.Paths.LockoutDurationMinutes) * time.Minute
-
-		// Check if the lockout period has expired.
-		if time.Since(user.UpdatedAt) < lockoutDuration {
-			logging.SecurityLog.Warn("AUTH FAIL", "username", username, "ip", ip, "reason", "account locked")
-			return nil, errors.New("account is temporarily locked")
-		} else {
-			// Lockout has expired. Reactivate the account but do not log the user in on this attempt.
-			if err := models.SetUserActiveStatus(user.ID, true); err != nil {
-				logging.AppLog.Error("Failed to reactivate user", "error", err, "user_id", user.ID, "ip", ip)
-				return nil, errors.New("internal server error")
-			}
-			if err := models.RecordLoginSuccess(user.ID); err != nil {
-				logging.AppLog.Error("Failed to reset failed login attempts on reactivation", "error", err, "user_id", user.ID, "ip", ip)
-			}
-			logging.SecurityLog.Info("ACCOUNT UNLOCKED", "username", username, "ip", ip)
-			return nil, errors.New("account has been unlocked, please try again")
-		}
+		return nil, errors.New("invalid username or password")
+	}
+	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
+		return nil, errors.New("account is temporarily locked")
 	}
 
 	// Step 2: If the account is active, validate credentials against PocketBase.
@@ -73,7 +58,7 @@ func authenticateUser(username, password, ip string) (*types.User, error) {
 
 		// Lock the account if max attempts are exceeded
 		if updatedUser != nil && maxAttempts > 0 && updatedUser.FailedLogins >= maxAttempts {
-			if err := models.SetUserActiveStatus(user.ID, false); err != nil {
+			if err := models.LockUser(user.ID, time.Now().Add(time.Duration(config.Paths.LockoutDurationMinutes)*time.Minute)); err != nil {
 				logging.AppLog.Error("Failed to lock account", "error", err, "user_id", user.ID, "ip", ip)
 			}
 			logging.SecurityLog.Warn("ACCOUNT LOCKED", "username", username, "ip", ip)
@@ -174,7 +159,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 			Expires:  token.ExpiresAt,
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   r.TLS != nil, // Use Secure flag if on HTTPS
+			Secure:   config.Paths.CookieSecure,
 			SameSite: http.SameSiteLaxMode,
 		})
 

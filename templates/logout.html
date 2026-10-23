@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign out</title>
+    <link rel="stylesheet" href="{{.Paths.Assets}}/css/style.css">
+</head>
+<body>
+    <main class="container form-container">
+        <h1>Sign out</h1>
+        <form action="{{.Paths.Logout}}" method="post">
+            <input type="hidden" name="xsrf_token" value="{{.XSRFToken}}">
+            <button type="submit">Sign out</button>
+        </form>
+        <p><a href="{{.Paths.Account}}">Back to account</a></p>
+    </main>
+</body>
+</html>

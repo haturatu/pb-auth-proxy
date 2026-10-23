@@ -58,3 +58,27 @@ jobs:
         with:
           version: v2.15.0
           skip-cache: true
+
+  authentication:
+    name: Authentication and browser tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+      - name: Install PocketBase and browser dependencies
+        run: |
+          curl -fsSL --retry 3 https://github.com/pocketbase/pocketbase/releases/download/v0.36.9/pocketbase_0.36.9_linux_amd64.zip -o "$RUNNER_TEMP/pocketbase.zip"
+          unzip -q "$RUNNER_TEMP/pocketbase.zip" -d "$RUNNER_TEMP/pocketbase"
+          sudo apt-get update
+          sudo apt-get install -y php8.3-fpm
+          python3 -m venv "$RUNNER_TEMP/passkey-venv"
+          "$RUNNER_TEMP/passkey-venv/bin/pip" install playwright==1.64.0
+          "$RUNNER_TEMP/passkey-venv/bin/playwright" install --with-deps chromium
+      - name: Test Go authentication with PocketBase and race detection
+        run: PB_BINARY="$RUNNER_TEMP/pocketbase/pocketbase" go test -race ./...
+      - name: Test JS and PHP passkeys with a virtual authenticator
+        env:
+          PHP_FPM_BINARY: /usr/sbin/php-fpm8.3
+        run: PB_BINARY="$RUNNER_TEMP/pocketbase/pocketbase" "$RUNNER_TEMP/passkey-venv/bin/python" tests/passkeys_e2e.py

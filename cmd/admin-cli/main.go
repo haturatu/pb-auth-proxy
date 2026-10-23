@@ -25,6 +25,7 @@ func main() {
 
 	username := flag.String("username", "", "Username for the new admin user")
 	password := flag.String("password", "", "Password for the new admin user")
+	resetPassword := flag.Bool("reset-password", false, "Reset an existing user password and revoke all sessions/tokens")
 	flag.Parse()
 
 	if *username == "" || *password == "" {
@@ -47,6 +48,18 @@ func main() {
 	if err != nil {
 		logging.AppLog.Error("Error checking for existing user", "error", err)
 		os.Exit(1)
+	}
+	if *resetPassword {
+		if existingUser == nil {
+			logging.AppLog.Error("Cannot reset password: user does not exist", "username", *username)
+			os.Exit(1)
+		}
+		if err := models.SetUserPassword(existingUser.ID, *password); err != nil {
+			logging.AppLog.Error("Password reset failed", "error", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Password reset for '%s'; all sessions and API tokens revoked.\n", *username)
+		return
 	}
 	if existingUser != nil {
 		logging.AppLog.Error(fmt.Sprintf("User '%s' already exists.", *username))

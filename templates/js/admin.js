@@ -7,7 +7,9 @@
  * @returns {Promise<Response>}
  */
 async function fetchApi(url, options = {}) {
-    const xsrfToken = document.querySelector('meta[name="xsrf-token"]').getAttribute('content');
+    const bootstrap = await fetch('/api/auth/browser', {credentials: 'same-origin'});
+    if (!bootstrap.ok) throw new Error('Could not initialize authentication');
+    const {csrf_token: xsrfToken} = await bootstrap.json();
 
     options.headers = {
         ...options.headers,

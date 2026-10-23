@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"auth-proxy/config"
 	"context"
 	"encoding/base64"
 	"net/http"
@@ -35,7 +36,11 @@ func XSRF(next http.Handler) http.Handler {
 
 		sessionID := getSessionID(r)
 
-		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			if origin := r.Header.Get("Origin"); origin != "" && origin != config.Paths.PublicOrigin {
+				http.Error(w, "Invalid origin", http.StatusForbidden)
+				return
+			}
 			clientToken := r.Header.Get(xsrfHeaderName)
 			if clientToken == "" {
 				clientToken = r.FormValue(xsrfFormField)

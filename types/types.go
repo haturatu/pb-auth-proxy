@@ -17,6 +17,13 @@ type PathConfig struct {
 	FrontPath       string
 	APIPath         string
 
+	PublicOrigin    string
+	CookieSecure    bool
+	WebAuthnEnabled bool
+	WebAuthnRPID    string
+	WebAuthnRPName  string
+	WebAuthnOrigin  string
+
 	ProtectFrontend bool
 	ProtectAPI      bool
 	RegisterEnabled bool
@@ -37,6 +44,8 @@ const SessionDataContextKey = ContextKey("sessionData")
 
 type User struct {
 	ID           string     `json:"id"`
+	AuthVersion  string     `json:"-"`
+	LockedUntil  *time.Time `json:"locked_until"`
 	Username     string     `json:"username"`
 	Role         string     `json:"role"`
 	IsActive     bool       `json:"is_active"`
@@ -60,11 +69,13 @@ type RefreshToken struct {
 }
 
 type JWTPayload struct {
-	UserID    string `json:"user_id"`
-	Username  string `json:"username"`
-	Role      string `json:"role"`
-	TokenType string `json:"token_type"`
-	Exp       int64  `json:"exp"`
+	ID          string `json:"jti"`
+	AuthVersion string `json:"auth_version"`
+	UserID      string `json:"user_id"`
+	Username    string `json:"username"`
+	Role        string `json:"role"`
+	TokenType   string `json:"token_type"`
+	Exp         int64  `json:"exp"`
 }
 
 type RateLimiter struct {
