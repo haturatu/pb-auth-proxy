@@ -5,6 +5,7 @@
 - [Auth Proxy (認証プロキシ)](#auth-proxy-%E8%AA%8D%E8%A8%BC%E3%83%97%E3%83%AD%E3%82%AD%E3%82%B7)
   - [なぜ作ったか](#%E3%81%AA%E3%81%9C%E4%BD%9C%E3%81%A3%E3%81%9F%E3%81%8B)
   - [おためし](#%E3%81%8A%E3%81%9F%E3%82%81%E3%81%97)
+  - [パスキー認証](#パスキー認証)
   - [主な機能](#%E4%B8%BB%E3%81%AA%E6%A9%9F%E8%83%BD)
   - [セキュリティと認証の詳細](#%E3%82%BB%E3%82%AD%E3%83%A5%E3%83%AA%E3%83%86%E3%82%A3%E3%81%A8%E8%AA%8D%E8%A8%BC%E3%81%AE%E8%A9%B3%E7%B4%B0)
     - [XSRF保護](#xsrf%E4%BF%9D%E8%AD%B7)
@@ -14,7 +15,7 @@
       - [2. API（JWTベース）](#2-apijwt%E3%83%99%E3%83%BC%E3%82%B9)
     - [セッション管理](#%E3%82%BB%E3%83%83%E3%82%B7%E3%83%A7%E3%83%B3%E7%AE%A1%E7%90%86)
       - [Web UIセッション](#web-ui%E3%82%BB%E3%83%83%E3%82%B7%E3%83%A7%E3%83%B3)
-      - [APIセッション（JWTによるステートレス管理）](#api%E3%82%BB%E3%83%83%E3%82%B7%E3%83%A7%E3%83%B3jwt%E3%81%AB%E3%82%88%E3%82%8B%E3%82%B9%E3%83%86%E3%83%BC%E3%83%88%E3%83%AC%E3%82%B9%E7%AE%A1%E7%90%86)
+      - [APIセッション（失効可能なJWT）](#apiセッション失効可能なjwt)
     - [トランスポート層セキュリティ（HTTPS）](#%E3%83%88%E3%83%A9%E3%83%B3%E3%82%B9%E3%83%9D%E3%83%BC%E3%83%88%E5%B1%A4%E3%82%BB%E3%82%AD%E3%83%A5%E3%83%AA%E3%83%86%E3%82%A3https)
   - [はじめに](#%E3%81%AF%E3%81%98%E3%82%81%E3%81%AB)
     - [前提条件](#%E5%89%8D%E6%8F%90%E6%9D%A1%E4%BB%B6)
@@ -23,9 +24,7 @@
 - [`.env` ファイルの例:](#env-%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%81%AE%E4%BE%8B)
     - [フロントエンドの選択](#%E3%83%95%E3%83%AD%E3%83%B3%E3%83%88%E3%82%A8%E3%83%B3%E3%83%89%E3%81%AE%E9%81%B8%E6%8A%9E)
       - [PHPフロントエンドのセットアップ](#php%E3%83%95%E3%83%AD%E3%83%B3%E3%83%88%E3%82%A8%E3%83%B3%E3%83%89%E3%81%AE%E3%82%BB%E3%83%83%E3%83%88%E3%82%A2%E3%83%83%E3%83%97)
-    - [データベース設定例](#%E3%83%87%E3%83%BC%E3%82%BF%E3%83%99%E3%83%BC%E3%82%B9%E8%A8%AD%E5%AE%9A%E4%BE%8B)
-      - [PostgreSQL](#postgresql)
-      - [MySQL / MariaDB](#mysql--mariadb)
+    - [PocketBase設定](#pocketbase設定)
   - [使い方](#%E4%BD%BF%E3%81%84%E6%96%B9)
   - [APIトークン（ベアラートークン）の発行](#api%E3%83%88%E3%83%BC%E3%82%AF%E3%83%B3%E3%83%99%E3%82%A2%E3%83%A9%E3%83%BC%E3%83%88%E3%83%BC%E3%82%AF%E3%83%B3%E3%81%AE%E7%99%BA%E8%A1%8C)
     - [保護されたバックエンドAPIへのプロキシ](#%E4%BF%9D%E8%AD%B7%E3%81%95%E3%82%8C%E3%81%9F%E3%83%90%E3%83%83%E3%82%AF%E3%82%A8%E3%83%B3%E3%83%89api%E3%81%B8%E3%81%AE%E3%83%97%E3%83%AD%E3%82%AD%E3%82%B7)
@@ -45,6 +44,20 @@
 
 ユーザー登録、ログイン、セッション管理を処理し、認証されたリクエストを設定済みのバックエンドにプロキシします。また、ユーザー管理のための管理ダッシュボードも含まれています。
 
+## パスキー認証
+
+Google パスワード マネージャー、iCloudキーチェーン、Windows Hello、FIDO2キーに保存した、このアプリ専用のパスキーでログインできます。JS/PHP両画面で、明示的なパスキーボタンとConditional UIの自動入力に対応しています。OIDC/OAuth2は含みません。
+
+1. PocketBaseをバックアップし、`pb_migrations/1792800000_passkeys_sessions.js` を適用します。Dockerの場合は `docker compose up --build` で再ビルドします。
+2. 本番では `PUBLIC_ORIGIN=https://auth.example.com`、`COOKIE_SECURE=true`、`WEBAUTHN_ENABLED=true`、`WEBAUTHN_RP_ID=example.com`、`WEBAUTHN_ORIGIN=https://auth.example.com` を設定します。RP IDは今後も使用するドメインを指定してください。
+3. パスワードでログイン後、アカウント画面でパスキーを登録します。追加・削除には5分以内のログインまたはパスワード再認証が必要です。
+
+既存のパスワードは復旧用として残ります。パスキー削除・パスワード変更・アカウント状態変更で、ユーザーの全セッション/APIトークンを失効します。一時ロックは `locked_until` を使い、管理者による `is_active=false` は自動解除しません。
+
+**移行時の変更:** 従来のJWT/セッションはすべて再ログインが必要です。`PUBLIC_ORIGIN` はパスキー無効時も必須、`SESSION_SECRET` は32文字以上必須です。Cookieで認証するAPI更新には、`GET /api/auth/browser` で取得するCSRFトークンと厳密なOriginが必要です。リフレッシュAPIは `POST /api/auth/refresh` に統一しました。
+
+ローカルデモは `.env.example` の `localhost` 設定を利用できます。本番はTLS終端プロキシ配下でもSecure Cookieを有効にしてください。設定・API・復旧CLI・検証方法は [パスキー導入ガイド](docs/passkeys.md) を参照してください。
+
 ## なぜ作ったか
 私の作成しているものがありますが  
 [GitHub - haturatu/puremania: No security, very fast, web UI self-hosted online storage](https://github.com/haturatu/puremania)  
@@ -55,10 +68,11 @@
 
 ## おためし
 ```bash
-git clone https://github.com/haturatu/auth-proxy.git
-cd auth-proxy
-chmod +x run-demo.sh
-bash run-demo.sh
+git clone https://github.com/haturatu/pb-auth-proxy.git
+cd pb-auth-proxy
+cp .env.example .env
+# SESSION_SECRET と XSRF_SECRET_KEY を生成して設定
+docker compose up --build
 ```
 
 ## 主な機能
@@ -66,7 +80,7 @@ bash run-demo.sh
 - **認証**: ログイン、ログアウト、登録ページを提供します。
 - **リバースプロキシ**: 認証されたユーザーをバックエンドサービスにプロキシします。
 - **管理ダッシュボード**: ユーザーを管理（ロールの更新、有効化/無効化、削除）するためのシンプルなUI。
-- **柔軟なデータベースサポート**: PostgreSQL, MySQL, SQLiteに対応。
+- **PocketBaseバックエンド**: ユーザー、パスキー、失効可能なトークンをPocketBaseに保存。
 - **プラグイン可能なフロントエンド**: 複数のフロントエンドモード（JS駆動またはPHP）をサポート。
 - **セキュリティ強化**:
     - **ブルートフォース攻撃からの保護**: 設定可能な回数ログインに失敗したユーザーアカウントをロックします。この保護は、Web UIからのログインと `/api/auth/token` エンドポイントの両方に適用されます。
@@ -103,7 +117,7 @@ bash run-demo.sh
 
 1.  ユーザーがログインページからユーザー名とパスワードを送信します。
 2.  サーバーは、PocketBaseに保存されたArgon2idハッシュと照合して認証情報を検証します。
-3.  成功すると、暗号学的に安全なランダムトークンが生成され、ユーザーに関連付けられてデータベースに保存されます。
+3.  成功すると、ランダムな `jti` を含むJWTを生成し、そのハッシュをPocketBaseに保存します。
 4.  このトークンは、`auth_token` という名前の安全な `HttpOnly` クッキーとしてユーザーのブラウザに送信され、セッションが確立されます。
 
 #### 2. API（JWTベース）
@@ -122,9 +136,9 @@ bash run-demo.sh
 
 ブラウザからの後続のリクエストでは、`auth_token`クッキーが自動的にサーバーに送信されます。ミドルウェアがこのトークンをデータベースで検索して検証します。トークンが有効で期限切れでなければ、リクエストは認証され、処理が続行されます。ユーザーがログアウトすると、セッショントークンはデータベースから削除され、セッションが無効になります。
 
-#### APIセッション（JWTによるステートレス管理）
+#### APIセッション（失効可能なJWT）
 
-APIリクエストの場合、クライアントは`Authorization: Bearer <token>`ヘッダーにJWTアクセストークンを含める必要があります。サーバー上のミドルウェアが、トークンの署名と有効期限を検証します。このプロセスはステートレスであり、リクエストごとにデータベースを検索する必要がないため、非常に効率的です。アクセストークンが期限切れになった場合、クライアントはリフレッシュトークンを使用して、再認証することなく新しいアクセストークンを要求できます。
+APIリクエストには `Authorization: Bearer <token>` を指定します。署名・有効期限に加え、PocketBaseの保存済みトークンと最新のユーザー状態を毎回検証します。リフレッシュは `POST /api/auth/refresh` で単回交換し、新しく返されたリフレッシュトークンに置き換えてください。
 
 **認証の優先順位に関する注意:** APIエンドポイントが保護されている場合（`PROTECT_API=true`）、ミドルウェアはまず`Authorization: Bearer`ヘッダーを探します。このヘッダーが存在しない場合、フォールバックとして`auth_token`セッションクッキーの検証を試みます。これにより、Web UIにログインしているユーザーは、ブラウザセッションを使用してAPIに対しても認証できます。しかし、これはAPIエンドポイントが有効なJWTまたは有効なセッションクッキーのいずれかによってアクセス可能であることを意味します。
 
@@ -142,14 +156,14 @@ APIリクエストの場合、クライアントは`Authorization: Bearer <token
 
 - Go 1.27.3 以降
 - (任意) PHPフロントエンドを使用する場合は、実行中のPHP-FPMサービス。
-- (任意) PostgreSQL または MySQL データベースサーバー。
+- マイグレーションを適用済みのPocketBaseサーバー。
 
 ### インストール
 
 1.  **リポジトリをクローン:**
     ```sh
-    git clone https://github.com/haturatu/auth-proxy
-    cd auth-proxy
+    git clone https://github.com/haturatu/pb-auth-proxy
+    cd pb-auth-proxy
     ```
 
 2.  **依存関係をインストール:**
@@ -179,22 +193,22 @@ TARGET_URL=http://localhost:8081
 
 # セッションクッキーとJWTを保護するための長くてランダムな文字列
 # 本番環境では、openssl rand -base64 45 を使って新しいキーを生成してください
-SESSION_SECRET=my-super-secret-key
+SESSION_SECRET=replace-with-at-least-32-random-bytes
 
 # (必須) XSRF保護のための32バイトのランダムなキー。
 # 生成コマンド: openssl rand -base64 32
 XSRF_SECRET_KEY=
 
-# --- データベース ---
-# 以下のいずれかのオプションを使用してください:
-
-# オプション1: PostgreSQL または MySQL (推奨)
-# 例: postgres://user:password@host:port/dbname?sslmode=disable
-# 例: mysql://user:password@tcp(host:port)/dbname?charset=utf8mb4&parseTime=true
-DATABASE_URL=mysql://test:test@127.0.0.1:3306/auth
-
-# オプション2: SQLite (DATABASE_URLが設定されていない場合のデフォルト)
-# DATABASE_PATH=./auth.db
+# --- PocketBase ---
+POCKETBASE_URL=http://localhost:8090
+POCKETBASE_COLLECTION=proxy_users
+POCKETBASE_SUPERUSER_EMAIL=admin@example.com
+POCKETBASE_SUPERUSER_PASSWORD=replace-me
+PUBLIC_ORIGIN=https://auth.example.com
+COOKIE_SECURE=true
+WEBAUTHN_ENABLED=true
+WEBAUTHN_RP_ID=example.com
+WEBAUTHN_ORIGIN=https://auth.example.com
 
 # --- フロントエンド & プロキシ ---
 # フロントエンドモード: "js" (デフォルト) または "php"
@@ -288,48 +302,9 @@ REFRESH_TOKEN_DURATION_DAYS=7
     PHP_DOC_ROOT=/var/www/html/auth-proxy/php
     ```
 
-### データベース設定例
+### PocketBase設定
 
-PostgreSQLまたはMySQLを使用している場合は、プロキシ用のデータベースとユーザーを作成する必要があります。
-
-#### PostgreSQL
-
-`psql` で以下のコマンドを実行します:
-
-```sql
--- 専用データベースを作成
-CREATE DATABASE auth_proxy;
-
--- 専用ユーザーを作成
-CREATE USER auth_user WITH PASSWORD 'your_strong_password';
-
--- ユーザーにデータベースの全権限を付与
-GRANT ALL PRIVILEGES ON DATABASE auth_proxy TO auth_user;
-```
-
-その場合、`.env` ファイルの `DATABASE_URL` は次のようになります:
-`DATABASE_URL=postgres://auth_user:your_strong_password@localhost:5432/auth_proxy?sslmode=disable`
-
-#### MySQL / MariaDB
-
-MySQLクライアントで以下のコマンドを実行します:
-
-```sql
--- 専用データベースを作成
-CREATE DATABASE auth_proxy CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- 専用ユーザーを作成
-CREATE USER 'auth_user'@'localhost' IDENTIFIED BY 'your_strong_password';
-
--- ユーザーにデータベースの全権限を付与
-GRANT ALL PRIVILEGES ON auth_proxy.* TO 'auth_user'@'localhost';
-
--- 変更を適用
-FLUSH PRIVILEGES;
-```
-
-その場合、`.env` ファイルの `DATABASE_URL` は次のようになります:
-`DATABASE_URL=mysql://auth_user:your_strong_password@tcp(127.0.0.1:3306)/auth_proxy?parseTime=true`
+`pb_migrations` をPocketBaseに配置して適用してください。新しい認証コレクションはスーパーユーザーだけに公開され、プロキシが管理します。接続変数は `.env.example` を参照してください。
 
 ## 使い方
 
@@ -398,7 +373,7 @@ curl -X POST -H "Content-Type: application/json" -d '{
 Authorization: Bearer <access_token>
 ```
 
-`refresh_token` は長命のトークンで、古いアクセストークンが期限切れになったときに新しいアクセストークンを取得するために使用できます。これを行うには、`/auth/refresh` エンドポイントに `POST` リクエストを送信します。
+`refresh_token` は長命のトークンで、古いアクセストークンが期限切れになったときに新しいアクセストークンを取得するために使用できます。これを行うには、`/api/auth/refresh` エンドポイントに `POST` リクエストを送信します。
 
 **注意:** トークンの有効期間は `.env` ファイルで設定できます。詳細は設定表を参照してください。
 
@@ -514,9 +489,7 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/config
 | 環境変数 | 説明 | デフォルト値 |
 | --- | --- | --- |
 | `TARGET_URL` | **(必須)** プロキシ先のバックエンドサービスのURL。 | - |
-| `SESSION_SECRET` | **(必須)** セッションクッキーの暗号化とJWTの署名に使用する、長くてランダムな秘密鍵。 | `default-secret-key-for-dev` |
-| `DATABASE_URL` | PostgreSQLまたはMySQLの接続文字列。設定されている場合、`DATABASE_PATH`より優先されます。 | - |
-| `DATABASE_PATH` | SQLiteデータベースのファイルパス。`DATABASE_URL`が設定されていない場合のみ使用されます。 | `./auth.db` |
+| `SESSION_SECRET` | **(必須)** セッションJWTの署名に使用する、32バイト以上のランダムな秘密鍵。 | - |
 | `LOG_LEVEL` | ログレベルを設定します。`DEBUG`, `INFO`, `WARN`, `ERROR`が指定できます。 | `INFO`                 |
 | `LISTEN_PORT` | プロキシサーバーがリッスンするポート。 | `8080`                 |
 | `FRONTEND_TYPE` | フロントエンドのレンダリングモードを切り替えます。`js`または`php`が指定できます。 | `js` |
@@ -537,5 +510,4 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/config
 | `REGISTER` | `false`に設定すると、新規ユーザー登録を無効にします。 | `true` |
 | `AUTH_PATH_*` | ログイン、管理者ページなどの内部URLをカスタマイズするための変数セット。 | 様々、例: `/login`|
 | `AUTH_ASSETS_PATH` | 内部静的アセット（CSS, JS）を提供するためのURLパス。 | `/assets` |
-| `ENV` | ランタイム環境。セキュアなクッキーを有効にするには`production`に設定します。 | - |
 | `XSRF_SECRET_KEY` | **(必須)** XSRF保護のための32バイトのランダムなキー。`openssl rand -base64 32` で生成します。 | - |

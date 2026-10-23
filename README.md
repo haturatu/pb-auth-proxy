@@ -5,6 +5,7 @@
 - [Auth Proxy](#auth-proxy)
   - [Try the Demo](#try-the-demo)
   - [Why I Built This](#why-i-built-this)
+  - [Passkeys](#passkeys)
   - [Features](#features)
   - [Security and Authentication Details](#security-and-authentication-details)
     - [XSRF Protection](#xsrf-protection)
@@ -14,7 +15,7 @@
       - [2. API (JWT-Based)](#2-api-jwt-based)
     - [Session Management](#session-management)
       - [Web UI Sessions](#web-ui-sessions)
-      - [API Sessions (Stateless with JWT)](#api-sessions-stateless-with-jwt)
+      - [API Sessions (Revocable JWTs)](#api-sessions-revocable-jwts)
     - [Transport Layer Security (HTTPS)](#transport-layer-security-https)
   - [Getting Started](#getting-started)
     - [Prerequisites](#prerequisites)
@@ -23,9 +24,7 @@
 - [Example `.env` file:](#example-env-file)
     - [Frontend Selection](#frontend-selection)
       - [PHP Frontend Setup](#php-frontend-setup)
-    - [Database Setup Examples](#database-setup-examples)
-      - [PostgreSQL](#postgresql)
-      - [MySQL / MariaDB](#mysql--mariadb)
+    - [PocketBase Setup](#pocketbase-setup)
   - [Usage](#usage)
   - [Issuing API Tokens (Bearer Tokens)](#issuing-api-tokens-bearer-tokens)
     - [Proxying to Protected Backend APIs](#proxying-to-protected-backend-apis)
@@ -51,8 +50,8 @@
   
   ## Try the Demo
   ```bash
-  git clone https://github.com/haturatu/auth-proxy.git
-  cd auth-proxy
+  git clone https://github.com/haturatu/pb-auth-proxy.git
+  cd pb-auth-proxy
   cp .env.example .env
   docker compose up --build
   ```
@@ -69,8 +68,18 @@
   - Use an auth collection.
   - Disable PocketBase password authentication; the proxy performs password authentication.
   - Ensure the auth collection has a unique `username` identity field if you keep the default `POCKETBASE_IDENTITY_FIELD=username`.
-  - Add custom fields `role` (text), `is_active` (bool), `failed_logins` (number), `last_login_at` (date), and `password_hash` (text, max 255).
+  - Apply the checked-in migrations for required fields and private authentication collections.
   
+  ## Passkeys
+
+  Both JS and PHP frontends support WebAuthn passkeys, explicit sign-in, conditional autofill, multiple named passkeys, and recent reauthentication for management. Google Password Manager, iCloud Keychain, Windows Hello, and FIDO2 security keys can store credentials for your RP ID. OAuth2/OIDC is not included.
+
+  Apply the new PocketBase migration before upgrading. Configure `PUBLIC_ORIGIN`, `COOKIE_SECURE=true`, `WEBAUTHN_ENABLED=true`, `WEBAUTHN_RP_ID`, and `WEBAUTHN_ORIGIN` for your public HTTPS origin. Local Docker defaults use `localhost`; fill in the required secrets in `.env`.
+
+  Existing sessions/JWTs require a fresh login. Tokens are now persisted and revocable; password changes, passkey deletion, and account status changes invalidate all user tokens. Cookie-authenticated API mutations require browser-bound CSRF tokens and an exact Origin. Password login remains available for recovery.
+
+  See [setup, API, recovery, migration, and verification instructions](docs/passkeys.md).
+
   ## Why I Built This
   
   I'm also the developer of [puremania](https://github.com/haturatu/puremania), and I wanted to avoid adding complex authentication logic to that project.
@@ -140,9 +149,9 @@
   
   For subsequent requests from a browser, the `auth_token` cookie is automatically sent to the server. A middleware validates the JWT signature and expiration, then loads the current user from PocketBase before allowing the request.
   
-  #### API Sessions (Stateless with JWT)
+  #### API Sessions (Revocable JWTs)
   
-  For API requests, the client must include the JWT Access Token in the `Authorization: Bearer <token>` header. A middleware on the server validates the token's signature and expiration time. This process is stateless, meaning it does not require a database lookup for every request, making it highly efficient. If the access token has expired, the client can use the refresh token to request a new access token without re-authenticating.
+  API requests include `Authorization: Bearer <token>`. The proxy validates the signature, expiry, stored token hash, current account status, and authentication version on every request. Refresh tokens are exchanged exactly once at `POST /api/auth/refresh`; store the replacement refresh token after each successful exchange.
   
   **Note on Authentication Precedence:** When an API endpoint is protected (i.e., `PROTECT_API=true`), the middleware first looks for an `Authorization: Bearer` header. If this header is not present, it will fall back to validating the `auth_token` session cookie. This allows users who are logged into the web UI to also authenticate to the API using their browser session, but it means that API endpoints are accessible via either a valid JWT or a valid session cookie.
   
@@ -163,8 +172,8 @@
   
   1.  **Clone the repository:**
       ```sh
-      git clone https://github.com/haturatu/auth-proxy
-      cd auth-proxy
+      git clone https://github.com/haturatu/pb-auth-proxy
+      cd pb-auth-proxy
       ```
   
   2.  **Install dependencies:**
@@ -194,7 +203,9 @@
   
   # A long, random string for securing session cookies and JWTs
   # For production, generate a new key using: openssl rand -base64 45
-  SESSION_SECRET=my-super-secret-key
+  SESSION_SECRET=replace-with-at-least-32-random-bytes
+  PUBLIC_ORIGIN=https://auth.example.com
+  COOKIE_SECURE=true
   
   # (Required) A 32-byte random key for XSRF protection.
   # Generate with: openssl rand -base64 32
@@ -305,49 +316,10 @@
       PHP_DOC_ROOT=/var/www/html/auth-proxy/php
       ```
   
-  ### Database Setup Examples
-  
-  If you are using PostgreSQL or MySQL, you will need to create a database and a user for the proxy.
-  
-  #### PostgreSQL
-  
-  Run these commands in `psql`:
-  
-  ```sql
-  -- Create a dedicated database
-  CREATE DATABASE auth_proxy;
-  
-  -- Create a dedicated user
-  CREATE USER auth_user WITH PASSWORD 'your_strong_password';
-  
-  -- Grant privileges on the database to the user
-  GRANT ALL PRIVILEGES ON DATABASE auth_proxy TO auth_user;
-  ```
-  
-  Your `DATABASE_URL` in the `.env` file would then be:
-  `DATABASE_URL=postgres://auth_user:your_strong_password@localhost:5432/auth_proxy?sslmode=disable`
-  
-  #### MySQL / MariaDB
-  
-  Run these commands in the MySQL client:
-  
-  ```sql
-  -- Create a dedicated database
-  CREATE DATABASE auth_proxy CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-  
-  -- Create a dedicated user
-  CREATE USER 'auth_user'@'localhost' IDENTIFIED BY 'your_strong_password';
-  
-  -- Grant privileges on the database to the user
-  GRANT ALL PRIVILEGES ON auth_proxy.* TO 'auth_user'@'localhost';
-  
-  -- Apply the changes
-  FLUSH PRIVILEGES;
-  ```
-  
-  Your `DATABASE_URL` in the `.env` file would then be:
-  `DATABASE_URL=mysql://auth_user:your_strong_password@tcp(127.0.0.1:3306)/auth_proxy?parseTime=true`
-  
+  ### PocketBase Setup
+
+  Apply the checked-in `pb_migrations` to PocketBase. Authentication collections are private and managed through the proxy's superuser connection. See `.env.example` and [the migration guide](docs/passkeys.md).
+
   ## Usage
   
   1.  **Create an Admin User**:
@@ -415,7 +387,7 @@
   Authorization: Bearer <access_token>
   ```
   
-  The `refresh_token` is a long-lived token that can be used to obtain a new access token once the old one expires. To do this, send a `POST` request to the `/auth/refresh` endpoint.
+  The `refresh_token` is a long-lived token that can be used to obtain a new access token once the old one expires. To do this, send a `POST` request to the `/api/auth/refresh` endpoint.
   
   **Note:** The token lifetimes can be configured in your `.env` file. See the configuration table for details.
   
@@ -531,10 +503,8 @@
   | Environment Variable | Description | Default Value |
   | --- | --- | --- |
   | `TARGET_URL` | **(Required)** The URL of the backend service to proxy to. | - |
-  | `SESSION_SECRET` | **(Required)** A long, random secret key for encrypting session cookies and signing JWTs. | `default-secret-key-for-dev` |
+  | `SESSION_SECRET` | **(Required)** A random key of at least 32 bytes for signing session cookies and JWTs. | - |
   | `XSRF_SECRET_KEY` | **(Required)** A 32-byte, base64-encoded random key for XSRF protection. Generate with `openssl rand -base64 32`. | - |
-  | `DATABASE_URL` | The connection string for PostgreSQL or MySQL. If set, this overrides `DATABASE_PATH`. | - |
-  | `DATABASE_PATH` | The file path for the SQLite database. Used only if `DATABASE_URL` is not set. | `./auth.db` |
   | `LOG_LEVEL` | Sets the logging level. Can be `DEBUG`, `INFO`, `WARN`, `ERROR`. | `INFO`                 |
   | `LISTEN_PORT` | The port for the proxy server to listen on. | `8080`                 |
   | `FRONTEND_TYPE` | Switches the frontend rendering mode. Can be `js` or `php`. | `js` |
@@ -555,7 +525,6 @@
   | `REGISTER` | If set to `false`, disables new user registration. | `true` |
   | `AUTH_PATH_*` | A set of variables to customize the internal URLs for login, admin, etc. | Various, e.g., `/login`|
   | `AUTH_ASSETS_PATH` | The URL path for serving internal static assets (CSS, JS). | `/assets` |
-  | `ENV` | The runtime environment. Set to `production` to enable secure cookies. | - |
   
   ## demo
   <img width="1366" height="461" alt="image" src="https://github.com/user-attachments/assets/17632b15-b0a3-4cc7-bafa-7392a209bcc7" />
