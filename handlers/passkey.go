@@ -45,7 +45,7 @@ func respondJSON(w http.ResponseWriter, value any) {
 }
 func BrowserInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", 405)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	respondJSON(w, map[string]any{"csrf_token": middleware.BrowserCSRFToken(r), "passkeys_enabled": passkeys != nil, "login_path": config.Paths.Login})
@@ -53,7 +53,7 @@ func BrowserInfoHandler(w http.ResponseWriter, r *http.Request) {
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
 	if err := json.NewDecoder(r.Body).Decode(target); err != nil {
-		http.Error(w, "Invalid request", 400)
+		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return false
 	}
 	return true
@@ -61,26 +61,26 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 func sessionUser(w http.ResponseWriter, r *http.Request, recent bool) (*types.User, string) {
 	cookie, err := r.Cookie("auth_token")
 	if err != nil {
-		http.Error(w, "Login required", 401)
+		http.Error(w, "Login required", http.StatusUnauthorized)
 		return nil, ""
 	}
 	user, err := models.GetUserByToken(cookie.Value)
 	if err != nil {
-		http.Error(w, "Authentication unavailable", 503)
+		http.Error(w, "Authentication unavailable", http.StatusServiceUnavailable)
 		return nil, ""
 	}
 	if user == nil {
-		http.Error(w, "Login required", 401)
+		http.Error(w, "Login required", http.StatusUnauthorized)
 		return nil, ""
 	}
 	if recent {
 		ok, err := models.RecentAuthentication(cookie.Value)
 		if err != nil {
-			http.Error(w, "Authentication unavailable", 503)
+			http.Error(w, "Authentication unavailable", http.StatusServiceUnavailable)
 			return nil, ""
 		}
 		if !ok {
-			http.Error(w, "Reauthenticate with your password before managing passkeys", 403)
+			http.Error(w, "Reauthenticate with your password before managing passkeys", http.StatusForbidden)
 			return nil, ""
 		}
 	}
@@ -88,7 +88,7 @@ func sessionUser(w http.ResponseWriter, r *http.Request, recent bool) (*types.Us
 }
 func ReauthenticateHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", 405)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	user, token := sessionUser(w, r, false)
@@ -103,11 +103,11 @@ func ReauthenticateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	verified, err := authenticateUser(user.Username, input.Password, logging.GetClientIP(r))
 	if err != nil || verified == nil {
-		http.Error(w, "Reauthentication failed", 401)
+		http.Error(w, "Reauthentication failed", http.StatusUnauthorized)
 		return
 	}
 	if err = models.MarkReauthenticated(token); err != nil {
-		http.Error(w, "Reauthentication unavailable", 503)
+		http.Error(w, "Reauthentication unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	respondJSON(w, map[string]bool{"ok": true})
@@ -122,7 +122,7 @@ func ceremonyBinding(r *http.Request, token string) string {
 func issueCeremony(w http.ResponseWriter, r *http.Request, kind, userID, token, name string, options any, session *webauthn.SessionData) {
 	id, err := models.CreateCeremony(ceremonyBinding(r, token), kind, userID, name, session)
 	if err != nil {
-		http.Error(w, "Could not store challenge", 503)
+		http.Error(w, "Could not store challenge", http.StatusServiceUnavailable)
 		return
 	}
 	respondJSON(w, map[string]any{"ceremony_id": id, "options": options})
@@ -140,16 +140,16 @@ func PasskeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" || utf8.RuneCountInString(name) > 100 {
-		http.Error(w, "Passkey name must contain 1–100 characters", 400)
+		http.Error(w, "Passkey name must contain 1–100 characters", http.StatusBadRequest)
 		return
 	}
 	u, err := models.LoadWebAuthnUser(user, config.Paths.WebAuthnRPID)
 	if err != nil {
-		http.Error(w, "Could not load passkeys", 503)
+		http.Error(w, "Could not load passkeys", http.StatusServiceUnavailable)
 		return
 	}
 	if len(u.Credentials) >= 20 {
-		http.Error(w, "Maximum of 20 passkeys reached", 400)
+		http.Error(w, "Maximum of 20 passkeys reached", http.StatusBadRequest)
 		return
 	}
 	exclude := make([]protocol.CredentialDescriptor, 0, len(u.Credentials))
@@ -158,7 +158,7 @@ func PasskeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
 	}
 	options, session, err := passkeys.BeginRegistration(u, webauthn.WithExclusions(exclude))
 	if err != nil {
-		http.Error(w, "Could not begin registration", 500)
+		http.Error(w, "Could not begin registration", http.StatusInternalServerError)
 		return
 	}
 	issueCeremony(w, r, "register", user.ID, token, name, options, session)
@@ -180,30 +180,30 @@ func PasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	ceremony, err := models.ConsumeCeremony(input.CeremonyID, ceremonyBinding(r, token), "register", user.ID)
 	if err != nil {
-		http.Error(w, "Invalid or expired challenge", 400)
+		http.Error(w, "Invalid or expired challenge", http.StatusBadRequest)
 		return
 	}
 	u, err := models.LoadWebAuthnUser(user, config.Paths.WebAuthnRPID)
 	if err != nil {
-		http.Error(w, "Could not load passkeys", 503)
+		http.Error(w, "Could not load passkeys", http.StatusServiceUnavailable)
 		return
 	}
 	parsed, err := protocol.ParseCredentialCreationResponseBody(bytes.NewReader(input.Credential))
 	if err != nil {
-		http.Error(w, "Invalid credential", 400)
+		http.Error(w, "Invalid credential", http.StatusBadRequest)
 		return
 	}
 	credential, err := passkeys.CreateCredential(u, ceremony.Session, parsed)
 	if err != nil {
-		http.Error(w, "Passkey verification failed", 400)
+		http.Error(w, "Passkey verification failed", http.StatusBadRequest)
 		return
 	}
 	if len(u.Credentials) >= 20 {
-		http.Error(w, "Maximum of 20 passkeys reached", 400)
+		http.Error(w, "Maximum of 20 passkeys reached", http.StatusBadRequest)
 		return
 	}
 	if err = models.SavePasskey(user.ID, config.Paths.WebAuthnRPID, ceremony.Name, credential); err != nil {
-		http.Error(w, "Could not save passkey; it may already be registered", 409)
+		http.Error(w, "Could not save passkey; it may already be registered", http.StatusConflict)
 		return
 	}
 	logging.SecurityLog.Info("PASSKEY REGISTERED", "user_id", user.ID)
@@ -212,7 +212,7 @@ func PasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
 func PasskeyLoginBegin(w http.ResponseWriter, r *http.Request) {
 	options, session, err := passkeys.BeginDiscoverableLogin(webauthn.WithUserVerification(protocol.VerificationRequired))
 	if err != nil {
-		http.Error(w, "Could not begin login", 500)
+		http.Error(w, "Could not begin login", http.StatusInternalServerError)
 		return
 	}
 	issueCeremony(w, r, "login", "", "", "", options, session)
@@ -224,7 +224,7 @@ func PasskeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	ceremony, err := models.ConsumeCeremony(input.CeremonyID, ceremonyBinding(r, ""), "login", "")
 	if err != nil {
-		http.Error(w, "Invalid or expired challenge", 400)
+		http.Error(w, "Invalid or expired challenge", http.StatusBadRequest)
 		return
 	}
 	var row *models.Passkey
@@ -249,38 +249,38 @@ func PasskeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	parsed, err := protocol.ParseCredentialRequestResponseBody(bytes.NewReader(input.Credential))
 	if err != nil {
-		http.Error(w, "Invalid credential", 400)
+		http.Error(w, "Invalid credential", http.StatusBadRequest)
 		return
 	}
 	_, credential, err := passkeys.ValidatePasskeyLogin(lookup, ceremony.Session, parsed)
 	if err != nil {
 		logging.SecurityLog.Warn("PASSKEY LOGIN FAILED", "ip", logging.GetClientIP(r))
-		http.Error(w, "Passkey verification failed", 401)
+		http.Error(w, "Passkey verification failed", http.StatusUnauthorized)
 		return
 	}
 	if credential.Authenticator.CloneWarning {
 		logging.SecurityLog.Warn("PASSKEY COUNTER WARNING", "user_id", authenticated.ID)
-		http.Error(w, "Passkey counter validation failed; use another passkey or your password", 401)
+		http.Error(w, "Passkey counter validation failed; use another passkey or your password", http.StatusUnauthorized)
 		return
 	}
 	if err = models.UpdatePasskey(row, credential); err != nil {
-		http.Error(w, "Could not update passkey", 503)
+		http.Error(w, "Could not update passkey", http.StatusServiceUnavailable)
 		return
 	}
 	// Recheck ownership and activation after verification, before issuing a session.
 	current, err := models.FindPasskey(credential.ID, config.Paths.WebAuthnRPID)
 	if err != nil || current == nil {
-		http.Error(w, "Passkey no longer available", 401)
+		http.Error(w, "Passkey no longer available", http.StatusUnauthorized)
 		return
 	}
 	user, err := models.GetUserByID(authenticated.ID)
 	if err != nil || user == nil || !user.IsActive || user.AuthVersion != authenticated.AuthVersion {
-		http.Error(w, "Account no longer available", 401)
+		http.Error(w, "Account no longer available", http.StatusUnauthorized)
 		return
 	}
 	token, err := models.CreateAuthToken(user, time.Duration(config.Paths.TokenDurationHours)*time.Hour)
 	if err != nil {
-		http.Error(w, "Could not create session", 503)
+		http.Error(w, "Could not create session", http.StatusServiceUnavailable)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "auth_token", Value: token.Token, Expires: token.ExpiresAt, Path: "/", HttpOnly: true, Secure: config.Paths.CookieSecure, SameSite: http.SameSiteLaxMode})
@@ -298,7 +298,7 @@ func PasskeysHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && r.URL.Path == "/api/auth/passkeys" {
 		rows, err := models.ListPasskeys(user.ID, config.Paths.WebAuthnRPID)
 		if err != nil {
-			http.Error(w, "Could not list passkeys", 503)
+			http.Error(w, "Could not list passkeys", http.StatusServiceUnavailable)
 			return
 		}
 		// Only expose display metadata, never credential public keys or internal state.
@@ -319,15 +319,16 @@ func PasskeysHandler(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(err, models.ErrInvalidToken) {
 				http.NotFound(w, r)
 			} else {
-				http.Error(w, "Could not delete passkey", 503)
+				http.Error(w, "Could not delete passkey", http.StatusServiceUnavailable)
 			}
 			return
 		}
+		http.SetCookie(w, &http.Cookie{Name: "auth_token", Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(0, 0), HttpOnly: true, Secure: config.Paths.CookieSecure, SameSite: http.SameSiteLaxMode})
 		logging.SecurityLog.Info("PASSKEY DELETED AND SESSIONS REVOKED", "user_id", user.ID)
 		respondJSON(w, map[string]string{"redirect": config.Paths.Login})
 		return
 	}
-	http.Error(w, "Method not allowed", 405)
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
 // PasskeyAPI keeps methods exact and fails closed when WebAuthn is disabled.
@@ -339,7 +340,7 @@ func PasskeyAPI(next http.HandlerFunc, method string) http.Handler {
 		}
 		if method != "" && r.Method != method {
 			w.Header().Set("Allow", method)
-			http.Error(w, "Method not allowed", 405)
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		next(w, r)

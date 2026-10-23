@@ -37,7 +37,7 @@ func RateLimitMiddleware(l *types.RateLimiter) func(http.Handler) http.Handler {
 			}
 			if len(l.Requests) >= 10000 && l.Requests[ip] == nil {
 				l.Mutex.Unlock()
-				http.Error(w, "Too Many Requests", 429)
+				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 				return
 			}
 			if _, ok := l.Requests[ip]; !ok {
@@ -60,7 +60,7 @@ func RateLimitMiddleware(l *types.RateLimiter) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Only add a timestamp for POST requests (actual registration attempts)
+			// Count authentication and account mutations; reads do not consume the budget.
 			if r.Method != http.MethodGet && r.Method != http.MethodHead {
 				l.Requests[ip] = append(l.Requests[ip], now)
 			}

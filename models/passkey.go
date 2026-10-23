@@ -14,6 +14,7 @@ import (
 type Passkey struct {
 	ID           string              `json:"id,omitempty"`
 	UserID       string              `json:"user_id"`
+	Revoked      bool                `json:"revoked"`
 	CredentialID string              `json:"credential_id"`
 	RPID         string              `json:"rp_id"`
 	Credential   webauthn.Credential `json:"credential_data"`
@@ -31,7 +32,7 @@ func (u *WebAuthnUser) WebAuthnName() string                       { return u.Us
 func (u *WebAuthnUser) WebAuthnDisplayName() string                { return u.Username }
 func (u *WebAuthnUser) WebAuthnCredentials() []webauthn.Credential { return u.Credentials }
 func ListPasskeys(userID, rpID string) ([]Passkey, error) {
-	return listRecords[Passkey]("passkey_credentials", "user_id="+database.QuoteFilterValue(userID)+" && rp_id="+database.QuoteFilterValue(rpID))
+	return listRecords[Passkey]("passkey_credentials", "user_id="+database.QuoteFilterValue(userID)+" && rp_id="+database.QuoteFilterValue(rpID)+" && revoked=false")
 }
 func LoadWebAuthnUser(user *types.User, rpID string) (*WebAuthnUser, error) {
 	rows, err := ListPasskeys(user.ID, rpID)
@@ -45,7 +46,7 @@ func LoadWebAuthnUser(user *types.User, rpID string) (*WebAuthnUser, error) {
 	return result, nil
 }
 func FindPasskey(rawID []byte, rpID string) (*Passkey, error) {
-	rows, err := listRecords[Passkey]("passkey_credentials", "credential_id="+database.QuoteFilterValue(base64.RawURLEncoding.EncodeToString(rawID))+" && rp_id="+database.QuoteFilterValue(rpID))
+	rows, err := listRecords[Passkey]("passkey_credentials", "credential_id="+database.QuoteFilterValue(base64.RawURLEncoding.EncodeToString(rawID))+" && rp_id="+database.QuoteFilterValue(rpID)+" && revoked=false")
 	if err != nil {
 		return nil, err
 	}
@@ -61,13 +62,19 @@ func UpdatePasskey(row *Passkey, credential *webauthn.Credential) error {
 	return patchRecord("passkey_credentials", row.ID, map[string]any{"credential_data": credential, "last_used_at": time.Now().UTC().Format(time.RFC3339Nano)})
 }
 func DeletePasskey(userID, rpID, id string) error {
-	rows, err := ListPasskeys(userID, rpID)
+	rows, err := listRecords[Passkey]("passkey_credentials", "user_id="+database.QuoteFilterValue(userID)+" && rp_id="+database.QuoteFilterValue(rpID))
 	if err != nil {
 		return err
 	}
 	for _, row := range rows {
 		if row.ID == id {
-			// Revoke first; storage failures cannot leave a deleted credential's sessions valid.
+			// Disable the credential before rotating the user's authentication version.
+			// Login rechecks this tombstone after verification, closing the window
+			// where a concurrent login could otherwise acquire the new version.
+			if err := patchRecord("passkey_credentials", id, map[string]any{"revoked": true}); err != nil {
+				return err
+			}
+			// A failed revocation leaves a disabled credential that can be retried.
 			if err := RevokeUserSessions(userID); err != nil {
 				return err
 			}
@@ -108,6 +115,9 @@ func ConsumeCeremony(key, binding, kind, userID string) (*Ceremony, error) {
 	expiry, err := parsePBTimeValue(row.ExpiresAt)
 	if err != nil || !time.Now().Before(expiry) || row.Binding != utils.TokenHash(binding) || row.Kind != kind || row.UserID != userID {
 		return nil, errors.New("invalid ceremony")
+	}
+	if err = claimConsumption("ceremony", row.KeyHash, row.ExpiresAt); err != nil {
+		return nil, ErrInvalidToken
 	}
 	if err = deleteRecord("webauthn_ceremonies", row.ID); err != nil {
 		return nil, err

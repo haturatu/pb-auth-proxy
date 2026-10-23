@@ -40,10 +40,13 @@ func SessionAuth(next http.Handler) http.Handler {
 		if user == nil {
 			// Clear the invalid cookie
 			http.SetCookie(w, &http.Cookie{
-				Name:   "auth_token",
-				Value:  "",
-				Path:   "/",
-				MaxAge: -1,
+				Name:     "auth_token",
+				Secure:   config.Paths.CookieSecure,
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				Value:    "",
+				Path:     "/",
+				MaxAge:   -1,
 			})
 			logging.SecurityLog.Warn("ACCESS DENIED", "reason", "invalid or expired session token", "path", r.URL.Path, "ip", ip)
 			http.Redirect(w, r, config.Paths.Login, http.StatusFound)

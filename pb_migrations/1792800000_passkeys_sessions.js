@@ -20,12 +20,23 @@ migrate((app) => {
         indexes: ["CREATE UNIQUE INDEX idx_auth_tokens_hash ON auth_tokens (token_hash)",
             "CREATE INDEX idx_auth_tokens_expiry ON auth_tokens (expires_at)"]
     })))
+    // PocketBase DELETE can return success to concurrent callers that loaded the
+    // same record. A unique insert is the atomic winner election for consumption.
+    app.save(new Collection(Object.assign({}, locked, {
+        name: "auth_consumptions",
+        fields: [
+            {name: "key_hash", type: "text", required: true, max: 64},
+            {name: "expires_at", type: "date", required: true}],
+        indexes: ["CREATE UNIQUE INDEX idx_consumption_key ON auth_consumptions (key_hash)",
+            "CREATE INDEX idx_consumption_expiry ON auth_consumptions (expires_at)"]
+    })))
     app.save(new Collection(Object.assign({}, locked, {
         name: "passkey_credentials",
         fields: [owner,
             {name: "credential_id", type: "text", required: true, max: 2048},
             {name: "rp_id", type: "text", required: true, max: 253},
             {name: "credential_data", type: "json", required: true, maxSize: 65536},
+            {name: "revoked", type: "bool"},
             {name: "name", type: "text", required: true, max: 100},
             {name: "created_at", type: "date", required: true},
             {name: "last_used_at", type: "date"}],
@@ -46,7 +57,7 @@ migrate((app) => {
             "CREATE INDEX idx_ceremony_expiry ON webauthn_ceremonies (expires_at)"]
     })))
 }, (app) => {
-    for (const name of ["webauthn_ceremonies", "passkey_credentials", "auth_tokens"]) {
+    for (const name of ["webauthn_ceremonies", "passkey_credentials", "auth_consumptions", "auth_tokens"]) {
         app.delete(app.findCollectionByNameOrId(name))
     }
     const users = app.findCollectionByNameOrId("proxy_users")

@@ -82,7 +82,7 @@ func CreateRefreshToken(user *types.User, duration time.Duration) (*types.Refres
 	return &types.RefreshToken{UserID: user.ID, Token: token, ExpiresAt: time.Now().Add(duration)}, err
 }
 
-// ConsumeRefreshToken validates then atomically deletes the record. A concurrent
+// ConsumeRefreshToken validates then atomically claims the record. A concurrent
 // refresh or replay must fail before any replacement tokens are issued.
 func ConsumeRefreshToken(token string) (*types.User, error) {
 	row, user, err := findToken(token, "refresh")
@@ -90,6 +90,9 @@ func ConsumeRefreshToken(token string) (*types.User, error) {
 		return nil, err
 	}
 	if row == nil {
+		return nil, ErrInvalidToken
+	}
+	if err = claimConsumption("refresh", row.TokenHash, row.ExpiresAt); err != nil {
 		return nil, ErrInvalidToken
 	}
 	if err = deleteRecord("auth_tokens", row.ID); err != nil {
@@ -117,7 +120,7 @@ func MarkReauthenticated(token string) error {
 }
 func DeleteExpiredTokens() (int64, error) {
 	var count int64
-	for _, collection := range []string{"auth_tokens", "webauthn_ceremonies"} {
+	for _, collection := range []string{"auth_tokens", "webauthn_ceremonies", "auth_consumptions"} {
 		rows, err := listRecords[struct {
 			ID string `json:"id"`
 		}](collection, fmt.Sprintf("expires_at < %s", database.QuoteFilterValue(time.Now().UTC().Format("2006-01-02 15:04:05.000Z"))))
