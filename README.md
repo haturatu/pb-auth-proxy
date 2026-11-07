@@ -538,12 +538,12 @@
   
   ```
 
-### Secure public GHCR images
+### Docker images
 
-On pushes to `main` or `v*` tags, GitHub Actions publishes `ghcr.io/haturatu/pb-auth-proxy` and `ghcr.io/haturatu/pb-auth-proxy-pocketbase`. Publishing uses repository `GITHUB_TOKEN` with job-level `packages: write`, never build-time session keys, passwords or local database data. Set each package's visibility to **Public** after first publication. These images currently target `linux/amd64`.
+Prebuilt images are available for the proxy and PocketBase:
+- `ghcr.io/haturatu/pb-auth-proxy:latest`
+- `ghcr.io/haturatu/pb-auth-proxy-pocketbase:latest`
 
-For a prebuilt installation, replace the corresponding Compose `build:` blocks with the matching `image:` values. Runtime variables are loaded from an optional local `.env` through Compose `env_file`; the three required credentials still use `${VAR:?error}` interpolation so missing or empty values stop deployment. The bootstrap migration no longer installs the publicly known PocketBase superuser or proxy admin credentials: run the explicit first-time provisioning steps above.
+To use these images with Docker Compose, replace each service's `build:` section with the corresponding `image:` entry. Configure `SESSION_SECRET`, `XSRF_SECRET_KEY` and `POCKETBASE_SUPERUSER_PASSWORD` in the local `.env` file. These credentials are required and must be unique to your deployment.
 
-PocketBase is bound to `127.0.0.1` on the host by default to avoid exposing the initial administrator setup to the network. Set `POCKETBASE_BIND_ADDRESS` only if you intentionally need a different, trusted listener.
-
-**Existing installations:** a migration already recorded as applied is not re-run. If you previously used demo credentials, rotate the PocketBase superuser password, reset the proxy admin password and revoke old sessions **before** exposing the service; updating the image alone does not change an existing database. Never commit actual `.env`, DB data, or private keys.
+For a new installation, initialize the PocketBase superuser and the proxy administrator using the setup commands above. The PocketBase admin API is bound to `127.0.0.1` on the host by default; only change `POCKETBASE_BIND_ADDRESS` if necessary. If upgrading an older demo installation, change its initial administrator passwords and revoke existing sessions.

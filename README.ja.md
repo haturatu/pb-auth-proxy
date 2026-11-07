@@ -512,10 +512,13 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/config
 | `AUTH_ASSETS_PATH` | 内部静的アセット（CSS, JS）を提供するためのURLパス。 | `/assets` |
 | `XSRF_SECRET_KEY` | **(必須)** XSRF保護のための32バイトのランダムなキー。`openssl rand -base64 32` で生成します。 | - |
 
-## 公開 GHCR イメージと秘匿情報
+## Docker イメージ
 
-`main` / `v*` への push で `ghcr.io/haturatu/pb-auth-proxy` と `ghcr.io/haturatu/pb-auth-proxy-pocketbase` を公開します。Actions は `GITHUB_TOKEN` のみで push し、ローカルの `.env`・秘密鍵・DB をビルドに含めません。初回公開後、GitHub Packages で各パッケージを **Public** に設定してください。現在は `linux/amd64` 向けです。
+以下のコンテナイメージを利用できます。
 
-Compose は任意のローカル `.env` を `env_file` で渡しますが、必須の3つの秘匿値は `${VAR:?エラー}` により未設定・空値を拒否します。新規インストールでは既知の初期管理者アカウントを自動作成しません。上記の手順で個別に作成してください。
+- `ghcr.io/haturatu/pb-auth-proxy:latest`
+- `ghcr.io/haturatu/pb-auth-proxy-pocketbase:latest`
 
-**既存環境:** 適用済みマイグレーションは再実行されないため、旧デモの管理者認証情報を使用したことがある場合、PocketBaseと認証プロキシ双方のパスワードを必ず変更し、古いセッションを失効させてください。
+Docker Compose で利用する場合は、各サービスの `build:` を対応する `image:` に置き換えてください。`.env` に `SESSION_SECRET`、`XSRF_SECRET_KEY`、`POCKETBASE_SUPERUSER_PASSWORD` を設定します。これらは必須で、環境ごとに異なる値を使用してください。
+
+初回起動時は上記の手順で PocketBase 管理者とプロキシ管理者を作成します。PocketBase 管理 API のホスト公開先は標準で `127.0.0.1` に限定されています。旧デモ環境から更新する場合は、初期管理者のパスワードを変更し、既存のセッションを失効させてください。
