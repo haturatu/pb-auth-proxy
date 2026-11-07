@@ -511,3 +511,11 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/config
 | `AUTH_PATH_*` | ログイン、管理者ページなどの内部URLをカスタマイズするための変数セット。 | 様々、例: `/login`|
 | `AUTH_ASSETS_PATH` | 内部静的アセット（CSS, JS）を提供するためのURLパス。 | `/assets` |
 | `XSRF_SECRET_KEY` | **(必須)** XSRF保護のための32バイトのランダムなキー。`openssl rand -base64 32` で生成します。 | - |
+
+## 公開 GHCR イメージと秘匿情報
+
+`main` / `v*` への push で `ghcr.io/haturatu/pb-auth-proxy` と `ghcr.io/haturatu/pb-auth-proxy-pocketbase` を公開します。Actions は `GITHUB_TOKEN` のみで push し、ローカルの `.env`・秘密鍵・DB をビルドに含めません。初回公開後、GitHub Packages で各パッケージを **Public** に設定してください。現在は `linux/amd64` 向けです。
+
+Compose は任意のローカル `.env` を `env_file` で渡しますが、必須の3つの秘匿値は `${VAR:?エラー}` により未設定・空値を拒否します。新規インストールでは既知の初期管理者アカウントを自動作成しません。上記の手順で個別に作成してください。
+
+**既存環境:** 適用済みマイグレーションは再実行されないため、旧デモの管理者認証情報を使用したことがある場合、PocketBaseと認証プロキシ双方のパスワードを必ず変更し、古いセッションを失効させてください。

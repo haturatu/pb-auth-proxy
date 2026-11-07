@@ -35,16 +35,19 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+    env_file:
+      - path: ./.env
+        required: false
     environment:
       LISTEN_PORT: ${LISTEN_PORT:-8080}
       TARGET_URL: ${TARGET_URL:-http://backend:80}
-      SESSION_SECRET: ${SESSION_SECRET:-local-dev-session-secret-change-me}
-      XSRF_SECRET_KEY: ${XSRF_SECRET_KEY:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      XSRF_SECRET_KEY: ${XSRF_SECRET_KEY:?Set XSRF_SECRET_KEY in .env}
       POCKETBASE_URL: ${POCKETBASE_URL:-http://pocketbase:8090}
       POCKETBASE_COLLECTION: ${POCKETBASE_COLLECTION:-proxy_users}
       POCKETBASE_IDENTITY_FIELD: ${POCKETBASE_IDENTITY_FIELD:-username}
       POCKETBASE_SUPERUSER_EMAIL: ${POCKETBASE_SUPERUSER_EMAIL:-admin@example.com}
-      POCKETBASE_SUPERUSER_PASSWORD: ${POCKETBASE_SUPERUSER_PASSWORD:-change-me-now}
+      POCKETBASE_SUPERUSER_PASSWORD: ${POCKETBASE_SUPERUSER_PASSWORD:?Set POCKETBASE_SUPERUSER_PASSWORD in .env}
       POCKETBASE_EMAIL_DOMAIN: ${POCKETBASE_EMAIL_DOMAIN:-pb-auth.local}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}

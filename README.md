@@ -53,15 +53,21 @@
   git clone https://github.com/haturatu/pb-auth-proxy.git
   cd pb-auth-proxy
   cp .env.example .env
-  docker compose up --build
+  # Set unique SESSION_SECRET, XSRF_SECRET_KEY and POCKETBASE_SUPERUSER_PASSWORD.
+  docker compose up -d pocketbase backend
+  # First run only: provision a separate PocketBase superuser with the password from .env.
+  docker compose exec pocketbase /pb/pocketbase superuser upsert admin@example.com '<your-unique-pocketbase-password>'
+  # First run only: create a proxy admin with a different strong password.
+  docker compose run --rm auth-proxy /app/admin-cli --username admin --password '<your-unique-admin-password>'
+  docker compose up -d auth-proxy
   ```
 
   Local demo endpoints:
 
   - Proxy login: `http://localhost:8080/login`
   - PocketBase admin API: `http://localhost:8090/_/`
-  - Seeded proxy admin login: `admin` / `password123`
-  - `docker compose` reads variables from the repo-root `.env`
+  - No shared demo accounts are created on new installations. Set up the superuser and proxy admin explicitly.
+  - `docker compose` reads variables from the repo-root `.env`; required credentials must be nonempty.
 
   PocketBase collection requirements:
 
@@ -531,4 +537,11 @@
   <img width="1366" height="461" alt="image" src="https://github.com/user-attachments/assets/bea8beb4-485b-4fac-9015-bf2c9d3490ac" />
   
   ```
-  
+
+### Secure public GHCR images
+
+On pushes to `main` or `v*` tags, GitHub Actions publishes `ghcr.io/haturatu/pb-auth-proxy` and `ghcr.io/haturatu/pb-auth-proxy-pocketbase`. Publishing uses repository `GITHUB_TOKEN` with job-level `packages: write`, never build-time session keys, passwords or local database data. Set each package's visibility to **Public** after first publication. These images currently target `linux/amd64`.
+
+For a prebuilt installation, replace the corresponding Compose `build:` blocks with the matching `image:` values. Runtime variables are loaded from an optional local `.env` through Compose `env_file`; the three required credentials still use `${VAR:?error}` interpolation so missing or empty values stop deployment. The bootstrap migration no longer installs the publicly known PocketBase superuser or proxy admin credentials: run the explicit first-time provisioning steps above.
+
+**Existing installations:** a migration already recorded as applied is not re-run. If you previously used demo credentials, rotate the PocketBase superuser password, reset the proxy admin password and revoke old sessions **before** exposing the service; updating the image alone does not change an existing database. Never commit actual `.env`, DB data, or private keys.
