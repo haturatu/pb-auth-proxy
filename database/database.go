@@ -50,6 +50,10 @@ func InitDB() {
 		logging.AppLog.Error("PocketBase superuser credentials are required", "missing_email", superEmail == "", "missing_password", superPassword == "")
 		os.Exit(1)
 	}
+	if superPassword == "change-me-now" {
+		logging.AppLog.Error("Refusing known insecure PocketBase demo password; rotate the superuser credentials")
+		os.Exit(1)
+	}
 
 	collection := os.Getenv("POCKETBASE_COLLECTION")
 	if collection == "" {

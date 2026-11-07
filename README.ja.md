@@ -511,3 +511,14 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8080/api/config
 | `AUTH_PATH_*` | ログイン、管理者ページなどの内部URLをカスタマイズするための変数セット。 | 様々、例: `/login`|
 | `AUTH_ASSETS_PATH` | 内部静的アセット（CSS, JS）を提供するためのURLパス。 | `/assets` |
 | `XSRF_SECRET_KEY` | **(必須)** XSRF保護のための32バイトのランダムなキー。`openssl rand -base64 32` で生成します。 | - |
+
+## Docker イメージ
+
+以下のコンテナイメージを利用できます。
+
+- `ghcr.io/haturatu/pb-auth-proxy:latest`
+- `ghcr.io/haturatu/pb-auth-proxy-pocketbase:latest`
+
+Docker Compose で利用する場合は、各サービスの `build:` を対応する `image:` に置き換えてください。`.env` に `SESSION_SECRET`、`XSRF_SECRET_KEY`、`POCKETBASE_SUPERUSER_PASSWORD` を設定します。これらは必須で、環境ごとに異なる値を使用してください。
+
+初回起動時は上記の手順で PocketBase 管理者とプロキシ管理者を作成します。PocketBase 管理 API のホスト公開先は標準で `127.0.0.1` に限定されています。旧デモ環境から更新する場合は、初期管理者のパスワードを変更し、既存のセッションを失効させてください。

@@ -6,3 +6,20 @@ auth-proxy-server
 pb_data
 tmp
 node_modules
+# Never send deployment credentials, private keys or local database files to BuildKit.
+**/.env
+**/.env.*
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/id_rsa*
+**/id_ed25519*
+**/secrets
+**/pb_data
+**/uploads

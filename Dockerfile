@@ -8,7 +8,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/auth-proxy-server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/auth-proxy-server ./cmd/server \
+    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/admin-cli ./cmd/admin-cli
 
 FROM alpine:3.24
 
@@ -17,6 +18,7 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 
 COPY --link --from=builder /out/auth-proxy-server /app/auth-proxy-server
+COPY --link --from=builder /out/admin-cli /app/admin-cli
 COPY templates /app/templates
 
 EXPOSE 8080

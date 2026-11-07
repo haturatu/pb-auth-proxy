@@ -49,9 +49,17 @@ func main() {
 		logging.AppLog.Error("SESSION_SECRET must be at least 32 bytes")
 		os.Exit(1)
 	}
+	if sessionSecret == "local-dev-session-secret-change-me" {
+		logging.AppLog.Error("Refusing known insecure demo SESSION_SECRET")
+		os.Exit(1)
+	}
 	xsrfSecret := os.Getenv("XSRF_SECRET_KEY")
 	if xsrfSecret == "" {
 		logging.AppLog.Error("XSRF_SECRET_KEY environment variable not set")
+		os.Exit(1)
+	}
+	if xsrfSecret == "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=" {
+		logging.AppLog.Error("Refusing known insecure demo XSRF_SECRET_KEY")
 		os.Exit(1)
 	}
 
