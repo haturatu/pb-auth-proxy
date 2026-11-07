@@ -65,7 +65,7 @@
   Local demo endpoints:
 
   - Proxy login: `http://localhost:8080/login`
-  - PocketBase admin API: `http://localhost:8090/_/`
+  - PocketBase admin API (localhost-bound by default): `http://localhost:8090/_/`
   - No shared demo accounts are created on new installations. Set up the superuser and proxy admin explicitly.
   - `docker compose` reads variables from the repo-root `.env`; required credentials must be nonempty.
 
@@ -543,5 +543,7 @@
 On pushes to `main` or `v*` tags, GitHub Actions publishes `ghcr.io/haturatu/pb-auth-proxy` and `ghcr.io/haturatu/pb-auth-proxy-pocketbase`. Publishing uses repository `GITHUB_TOKEN` with job-level `packages: write`, never build-time session keys, passwords or local database data. Set each package's visibility to **Public** after first publication. These images currently target `linux/amd64`.
 
 For a prebuilt installation, replace the corresponding Compose `build:` blocks with the matching `image:` values. Runtime variables are loaded from an optional local `.env` through Compose `env_file`; the three required credentials still use `${VAR:?error}` interpolation so missing or empty values stop deployment. The bootstrap migration no longer installs the publicly known PocketBase superuser or proxy admin credentials: run the explicit first-time provisioning steps above.
+
+PocketBase is bound to `127.0.0.1` on the host by default to avoid exposing the initial administrator setup to the network. Set `POCKETBASE_BIND_ADDRESS` only if you intentionally need a different, trusted listener.
 
 **Existing installations:** a migration already recorded as applied is not re-run. If you previously used demo credentials, rotate the PocketBase superuser password, reset the proxy admin password and revoke old sessions **before** exposing the service; updating the image alone does not change an existing database. Never commit actual `.env`, DB data, or private keys.
