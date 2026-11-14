@@ -6,8 +6,8 @@ require (
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/joho/godotenv v1.5.1
 	github.com/tomasen/fcgi_client v0.0.0-20180423082037-2bb3d819fd19
-	golang.org/x/crypto v0.58.0
-	golang.org/x/net v0.61.0
+	golang.org/x/crypto v0.59.0
+	golang.org/x/net v0.62.0
 )
 
 require (
@@ -20,5 +20,5 @@ require (
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 )
